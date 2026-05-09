@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-rose: #C9A99A;
+  --color-offwhite: #F2EDE9;
+  --color-dark: #0F0F0F;
+  --color-darker: #0c0c0c;
+  --color-bubble-user: #1A1A1A;
+  --color-text-muted: #8E8E8E;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+  background-color: var(--color-dark);
+}
+
+body {
+  color: var(--color-offwhite);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  background: radial-gradient(circle at center, #1a1513 0%, #0F0F0F 100%);
+  min-height: 100vh;
+}
+
+.mask-linear-gradient {
+  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 1s ease-out;
+}
