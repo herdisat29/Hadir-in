@@ -16,7 +16,9 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background-color: var(--color-dark);
 }
 
@@ -25,7 +27,8 @@ body {
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
   background: radial-gradient(circle at center, #1a1513 0%, #0F0F0F 100%);
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
 }
 
 .mask-linear-gradient {

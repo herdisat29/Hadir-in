@@ -15,7 +15,7 @@ import {
   RANDOM_NUDGES,
   TIME_GREETINGS
 } from './constants';
-import { getHadirResponse } from './services/geminiService';
+import { getHadirResponse, getRecapMessage } from './services/geminiService';
 
 const isDev = typeof window !== 'undefined' && (
   new URLSearchParams(window.location.search).get('dev') === 'true' ||
@@ -34,9 +34,10 @@ const SplashScreen = ({ onStart, hasLongBreak }: { onStart: () => void; hasLongB
 
   useEffect(() => {
     const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) setGreeting(TIME_GREETINGS.morning);
+    if (hour >= 0 && hour < 4) setGreeting(TIME_GREETINGS.lateNight);
+    else if (hour >= 4 && hour < 12) setGreeting(TIME_GREETINGS.morning);
     else if (hour >= 12 && hour < 17) setGreeting(TIME_GREETINGS.afternoon);
-    else if (hour >= 17 && hour < 20) setGreeting(TIME_GREETINGS.evening);
+    else if (hour >= 17 && hour < 18) setGreeting(TIME_GREETINGS.evening);
     else setGreeting(TIME_GREETINGS.night);
   }, []);
   
@@ -255,10 +256,8 @@ const MessageBubble = ({ msg, onSpeak }: { msg: Message; onSpeak?: (text: string
   const isAssistant = msg.role === 'assistant';
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      className={`flex ${isAssistant ? 'justify-start' : 'justify-end'} group`}
+    <div
+      className={`flex ${isAssistant ? 'justify-start' : 'justify-end'} group animate-in fade-in duration-300 slide-in-from-bottom-2`}
     >
       <div className={`relative max-w-[85%] px-5 py-3.5 rounded-[24px] ${
         isAssistant 
@@ -278,17 +277,21 @@ const MessageBubble = ({ msg, onSpeak }: { msg: Message; onSpeak?: (text: string
           </motion.button>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-const IcebreakerPrompts = ({ onSelect }: { onSelect: (text: string) => void; key?: any }) => {
-  const prompts = [
-    "Lagi capek banget hari ini",
-    "Ada hal kecil yang bikin senyum",
-    "Gue bingung mau rasa apa",
-    "Lagi pengen diem aja sebenernya"
-  ];
+const IcebreakerPrompts = ({ onSelect, day }: { onSelect: (text: string) => void; day: number; key?: any }) => {
+  if (day >= 8) return null;
+
+  const prompts = day <= 3 
+    ? ["Lagi oke", "Lagi berat", "Gak tau rasanya apa"]
+    : [
+        "Lagi capek banget hari ini",
+        "Ada hal kecil yang bikin senyum",
+        "Gue bingung mau rasa apa",
+        "Lagi pengen diem aja sebenernya"
+      ];
 
   return (
     <div className="flex flex-wrap gap-2 px-6 mt-4">
@@ -485,7 +488,18 @@ const TypingText = () => {
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>(AppScreen.SPLASH);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = localStorage.getItem(STORAGE_KEYS.MESSAGES);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState<UserStats>(() => {
@@ -537,6 +551,55 @@ export default function App() {
   const [companionMode, setCompanionMode] = useState(() => {
     return localStorage.getItem('companion_mode') === 'true';
   });
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const installPromptRef = useRef<any>(null);
+
+  // PWA Install Prompt Logic
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      installPromptRef.current = e;
+      
+      const hasBeenPrompted = localStorage.getItem('install_prompted') === 'true';
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+      if (!hasBeenPrompted && !isStandalone) {
+        setShowInstallBanner(true);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPromptRef.current) return;
+    
+    installPromptRef.current.prompt();
+    const { outcome } = await installPromptRef.current.userChoice;
+    
+    if (outcome === 'accepted') {
+      setShowInstallBanner(false);
+      localStorage.setItem('install_prompted', 'true');
+    }
+    installPromptRef.current = null;
+  };
+
+  const handleDismissInstall = () => {
+    setShowInstallBanner(false);
+    localStorage.setItem('install_prompted', 'true');
+  };
+
+  // Persist messages (de-prioritize to avoid blocking render)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const timer = setTimeout(() => {
+        localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [messages]);
 
   // Random Nudge Logic
   useEffect(() => {
@@ -570,12 +633,19 @@ export default function App() {
   const [showDebug, setShowDebug] = useState(false);
 
   const debugConclude = () => {
-    prepareClosing();
+    triggerRecapAndClose();
   };
 
   const debugAddDay = () => {
     if (stats) {
-      const newStats = { ...stats, currentDay: (stats.currentDay || 1) + 1, streak: (stats.streak || 1) + 1 };
+      // Set lastCheckIn to yesterday so prepareClosing treats it as consecutive
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      const newStats = { 
+        ...stats, 
+        currentDay: (stats.currentDay || 1) + 1, 
+        streak: (stats.streak || 1) + 1,
+        lastCheckIn: yesterday 
+      };
       setStats(newStats);
       localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
     }
@@ -622,6 +692,40 @@ export default function App() {
     }
   }, []);
 
+  // Handle viewport height for mobile browsers (throttled)
+  useEffect(() => {
+    let ticking = false;
+    const updateVH = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const visualViewport = window.visualViewport;
+          const vh = (visualViewport ? visualViewport.height : window.innerHeight) * 0.01;
+          document.documentElement.style.setProperty('--vh', `${vh}px`);
+          
+          if (visualViewport) {
+            setIsKeyboardOpen(visualViewport.height < window.innerHeight * 0.85);
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    updateVH();
+    window.addEventListener('resize', updateVH);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateVH);
+      window.visualViewport.addEventListener('scroll', updateVH);
+    }
+    return () => {
+      window.removeEventListener('resize', updateVH);
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateVH);
+        window.visualViewport.removeEventListener('scroll', updateVH);
+      }
+    };
+  }, []);
+
   // Scroll to bottom when messages update
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -646,10 +750,12 @@ export default function App() {
   // Focus input after AI responds or when screen changes to CHAT
   useEffect(() => {
     if (screen === AppScreen.CHAT && !isLoading) {
-      // Small timeout to ensure DOM is ready
+      // Small timeout to ensure DOM is ready and avoid layout thrashing
       const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+        if (inputRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus({ preventScroll: true });
+        }
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [screen, isLoading]);
@@ -688,8 +794,17 @@ export default function App() {
   const prepareClosing = () => {
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    // Fix: Don't reset streak if they already checked in today (e.g. debugging or multiple sessions)
+    const alreadyCheckedInToday = stats.lastCheckIn === today;
     const isConsecutive = stats.lastCheckIn === yesterday;
-    const newStreak = isConsecutive ? stats.streak + 1 : 1;
+    
+    let newStreak = stats.streak;
+    if (isConsecutive) {
+      newStreak = stats.streak + 1;
+    } else if (!alreadyCheckedInToday) {
+      newStreak = 1;
+    }
     
     const history = [...stats.checkInHistory];
     if (!history.includes(today)) history.push(today);
@@ -707,9 +822,13 @@ export default function App() {
       }
     }
 
+    // Also update currentDay if it's a new check-in
+    const newCurrentDay = !alreadyCheckedInToday ? stats.currentDay + 1 : stats.currentDay;
+
     const newStats = {
       ...stats,
       streak: newStreak,
+      currentDay: newStreak, // Synchronize currentDay with streak for clarity in UI
       lastCheckIn: today,
       checkInHistory: history,
       lastMood: moodSummary,
@@ -721,13 +840,35 @@ export default function App() {
     setScreen(AppScreen.CLOSING);
   };
 
+  const triggerRecapAndClose = async () => {
+    setIsLoading(true);
+    try {
+      const apiMessages = messages.map(m => ({ role: m.role, content: m.content }));
+      const recap = await getRecapMessage(apiMessages);
+      
+      const recapMsg: Message = {
+        id: `recap-${Date.now()}`,
+        role: 'assistant',
+        content: recap,
+        timestamp: Date.now()
+      };
+      
+      setMessages(prev => [...prev, recapMsg]);
+      localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify([...messages, recapMsg]));
+    } catch (error) {
+      console.error("Recap Error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+
+    // Wait 3 seconds then show closing
+    setTimeout(() => {
+      prepareClosing();
+    }, 3000);
+  };
+
   const concludeSession = () => {
-    const newStats = {
-      ...stats,
-      currentDay: stats.currentDay + 1
-    };
-    setStats(newStats);
-    localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
+    // currentDay is now already updated in prepareClosing or startSession
     setScreen(AppScreen.ALREADY_CHECKED_IN);
   };
 
@@ -745,6 +886,11 @@ export default function App() {
     setMessages(newMessages);
     setUserInput('');
     setIsLoading(true);
+    
+    // Explicitly keep focus for mobile
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
     
     // Core Feature: Only trigger ending after 6 user messages
     exchangeCount.current += 1;
@@ -786,8 +932,8 @@ export default function App() {
     // Trigger closing after 15 user messages
     if (exchangeCount.current >= 15) {
       setTimeout(() => {
-        prepareClosing();
-      }, 2500);
+        triggerRecapAndClose();
+      }, 5000);
     }
   };
 
@@ -861,43 +1007,38 @@ export default function App() {
     }
     
     // Auto-end after reflection acknowledgment
-    setTimeout(() => prepareClosing(), 3000);
+    setTimeout(() => triggerRecapAndClose(), 5000);
   };
 
   return (
     <div className="min-h-[100dvh] bg-dark flex items-center justify-center relative overflow-hidden font-sans selection:bg-rose/30">
-      {/* Background Atmosphere */}
-      <motion.div 
-        className="fixed inset-0 pointer-events-none z-[-1] opacity-50"
-        animate={{ 
-          opacity: [0.4, 0.6, 0.4],
-          scale: [1, 1.05, 1],
-        }}
-        transition={{ 
-          duration: 10, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
+      {/* Background Atmosphere (Static on mobile to save GPU) */}
+      <div 
+        className="fixed inset-0 pointer-events-none z-[-1] opacity-40 bg-darker"
         style={{
           background: `
-            radial-gradient(circle at 10% 20%, ${COLORS.rose}08 0%, transparent 40%),
-            radial-gradient(circle at 90% 80%, ${COLORS.rose}05 0%, transparent 40%)
+            radial-gradient(circle at 10% 20%, ${COLORS.rose}10 0%, transparent 50%),
+            radial-gradient(circle at 90% 80%, ${COLORS.rose}08 0%, transparent 50%)
           `,
-          filter: 'blur(120px)'
+          filter: 'blur(80px)'
         }}
       />
-      <motion.div 
-        className="fixed top-[10%] -left-[50px] w-[300px] h-[300px] bg-rose filter blur-[120px] opacity-[0.03] pointer-events-none z-[-1]"
-        animate={{ 
-          x: [0, 20, 0],
-          y: [0, -10, 0],
-        }}
-        transition={{ 
-          duration: 15, 
-          repeat: Infinity, 
-          ease: "easeInOut" 
-        }}
-      />
+      
+      {/* Animated blob only for large screens or very subtle */}
+      <div className="hidden lg:block">
+        <motion.div 
+          className="fixed top-[10%] -left-[50px] w-[300px] h-[300px] bg-rose filter blur-[100px] opacity-[0.02] pointer-events-none z-[-1]"
+          animate={{ 
+            x: [0, 15, 0],
+            y: [0, -10, 0],
+          }}
+          transition={{ 
+            duration: 20, 
+            repeat: Infinity, 
+            ease: "easeInOut" 
+          }}
+        />
+      </div>
 
       {/* Floating Quote for Desktop/Wide Screens */}
       <div className="hidden lg:block fixed left-[calc(50%+280px)] top-[40%] max-w-[320px] pointer-events-none select-none z-0">
@@ -930,7 +1071,9 @@ export default function App() {
       </div>
 
       {/* Main App Container */}
-      <div className="w-full max-w-md h-[100dvh] flex flex-col bg-darker/80 backdrop-blur-xl lg:border lg:border-offwhite/5 lg:rounded-[40px] lg:my-8 lg:h-[92dvh] lg:shadow-[0_0_100px_-20px_rgba(231,151,151,0.05)] relative z-10 overflow-hidden">
+      <div 
+        className="w-full max-w-md h-[100svh] flex flex-col bg-darker/80 backdrop-blur-xl lg:border lg:border-offwhite/5 lg:rounded-[40px] lg:my-8 lg:h-[92dvh] lg:shadow-[0_0_100px_-20px_rgba(231,151,151,0.05)] relative z-10 overflow-hidden"
+      >
         {/* Background Texture (Universal) */}
         <div className="absolute inset-0 pointer-events-none select-none flex items-center justify-center p-12 text-center overflow-hidden z-0 opacity-[0.03]">
           <div className="space-y-8">
@@ -963,7 +1106,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-1 flex flex-col h-full relative"
+              className="flex-1 flex flex-col h-full relative overflow-hidden"
             >
             {/* Soft Day Indicator */}
             <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-20">
@@ -994,7 +1137,7 @@ export default function App() {
             {/* Chat Area */}
             <div 
               ref={scrollRef}
-              className="flex-1 overflow-y-auto scrollbar-none mask-linear-gradient pt-16 overscroll-contain"
+              className="flex-1 overflow-y-auto scrollbar-none pt-16 overscroll-contain"
             >
               <div className="flex flex-col justify-end min-h-full px-4 pb-4 space-y-6">
                 {messages.map((msg) => (
@@ -1002,7 +1145,7 @@ export default function App() {
                 ))}
                 
                 {messages.length === 1 && !isLoading && (
-                  <IcebreakerPrompts onSelect={handleSendMessage} />
+                  <IcebreakerPrompts onSelect={handleSendMessage} day={stats.currentDay || 1} />
                 )}
 
                 {isLoading && (
@@ -1026,7 +1169,11 @@ export default function App() {
             </div>
 
             {/* Input Area */}
-            <div className="w-full px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-2 bg-dark/90 backdrop-blur-sm border-t border-offwhite/5">
+            <div 
+              className={`w-full px-4 pt-2 bg-dark/95 backdrop-blur-md border-t border-offwhite/5 sticky bottom-0 z-40 ${
+                isKeyboardOpen ? 'pb-2' : 'pb-[max(24px,env(safe-area-inset-bottom))]'
+              }`}
+            >
                 {/* Text Input */}
                 <form 
                   onSubmit={(e) => {
@@ -1042,9 +1189,13 @@ export default function App() {
                       type="text"
                       value={userInput}
                       onChange={(e) => setUserInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isLoading && userInput.trim()) {
+                          handleSendMessage(userInput);
+                        }
+                      }}
                       placeholder="Ketik sesuatu..."
                       className="w-full bg-bubble-user border border-offwhite/5 rounded-[24px] py-3.5 px-5 focus:outline-none focus:border-rose/20 text-offwhite placeholder:text-text-muted text-[15px] transition-colors duration-200"
-                      disabled={isLoading}
                       autoComplete="off"
                     />
                   </div>
@@ -1052,14 +1203,54 @@ export default function App() {
                     id="btn-send"
                     type="submit"
                     disabled={!userInput.trim() || isLoading}
-                    className="w-11 h-11 rounded-full flex items-center justify-center bg-rose text-[#121212] disabled:opacity-50 transition-colors duration-200 shrink-0 shadow-lg active:scale-95"
+                    className="w-11 h-11 rounded-full flex items-center justify-center bg-rose text-[#121212] disabled:opacity-50 transition-all duration-200 shrink-0 shadow-lg active:scale-95 disabled:scale-100"
                   >
-                    <Send size={20} />
+                    {isLoading ? (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      >
+                        <RotateCcw size={18} />
+                      </motion.div>
+                    ) : (
+                      <Send size={20} />
+                    )}
                   </button>
                 </form>
             </div>
           </motion.div>
         )}
+
+        <AnimatePresence>
+          {showInstallBanner && screen === AppScreen.CHAT && !isKeyboardOpen && (
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="fixed bottom-[max(80px,env(safe-area-inset-bottom)+60px)] left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md z-50 px-5 py-4 bg-[#121212]/95 backdrop-blur-xl border border-offwhite/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-between gap-4"
+            >
+              <div className="flex-1">
+                <p className="text-[13px] text-rose font-medium leading-relaxed">
+                  Biar Hadir selalu ada — install ke homescreen kamu.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={handleDismissInstall}
+                  className="text-[12px] font-medium text-offwhite/40 hover:text-offwhite/60 transition-colors"
+                >
+                  Nanti aja
+                </button>
+                <button
+                  onClick={handleInstallClick}
+                  className="px-5 py-2 text-[12px] font-semibold bg-rose text-darker rounded-full active:scale-95 transition-transform shadow-lg shadow-rose/10"
+                >
+                  Install
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {screen === AppScreen.CLOSING && (
           <ClosingScreen 
