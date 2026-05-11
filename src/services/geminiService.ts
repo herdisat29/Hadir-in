@@ -10,10 +10,9 @@ export async function getHadirResponse(
   lastMood?: string | null,
   totalSessions?: number,
   memoryBank?: string[],
-  userStyle?: 'cerita' | 'tanya',
-  userAge?: string
+  userStyle?: 'cerita' | 'tanya'
 ) {
-  console.log("AI Request started", { day, lastMood, totalSessions, userStyle, userAge });
+  console.log("AI Request started", { day, lastMood, totalSessions, userStyle });
   
   if (!apiKey) {
     console.error("AI Request failed: API Key missing");
@@ -57,7 +56,7 @@ export async function getHadirResponse(
             parts: [{ text: m.content }]
           })),
           config: {
-            systemInstruction: SYSTEM_PROMPT(day, lastMood, totalSessions, memoryBank, userStyle, userAge),
+            systemInstruction: SYSTEM_PROMPT(day, lastMood, totalSessions, memoryBank, userStyle),
             temperature: 0.7,
             topP: 0.95,
             safetySettings,

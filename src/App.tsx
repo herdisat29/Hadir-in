@@ -415,11 +415,23 @@ const MessageBubble = ({ msg }: { msg: Message; key?: any }) => {
   );
 };
 
-const IcebreakerPrompts = ({ onSelect, day }: { onSelect: (text: string) => void; day: number; key?: any }) => {
+const IcebreakerPrompts = ({ 
+  onSelect, 
+  day
+}: { 
+  onSelect: (text: string) => void; 
+  day: number; 
+  key?: any 
+}) => {
   if (day >= 8) return null;
 
   const prompts = day <= 3 
-    ? ["Lagi oke", "Lagi berat", "Gak tau rasanya apa"]
+    ? [
+        "Ada yang ngeganjel dikit", 
+        "Lagi tenang aja sih", 
+        "Kepala gue agak berisik",
+        "Gue bingung mau cerita apa"
+      ]
     : [
         "Lagi capek banget hari ini",
         "Ada hal kecil yang bikin senyum",
@@ -428,38 +440,30 @@ const IcebreakerPrompts = ({ onSelect, day }: { onSelect: (text: string) => void
       ];
 
   return (
-    <div className="flex flex-wrap gap-2 px-6 mt-4">
-      {prompts.map((prompt, idx) => (
-        <motion.button
-          key={`icebreaker-${idx}`}
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5 + (idx * 0.1) }}
-          whileHover={{ scale: 1.05, backgroundColor: 'rgba(201, 169, 154, 0.15)' }}
-          whileTap={{ scale: 0.95 }}
-          onClick={() => onSelect(prompt)}
-          className="px-4 py-2 rounded-full border border-rose/10 bg-rose/5 text-rose/70 text-[11px] font-medium tracking-wide transition-all"
-        >
-          {prompt}
-        </motion.button>
-      ))}
+    <div className="px-6 mt-4">
+      <div className="flex flex-wrap gap-2">
+        {prompts.map((prompt, idx) => (
+          <motion.button
+            key={`icebreaker-${idx}`}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.5 + (idx * 0.1) }}
+            whileHover={{ scale: 1.05, backgroundColor: 'rgba(201, 169, 154, 0.15)' }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onSelect(prompt)}
+            className="px-4 py-2 rounded-full border border-rose/10 bg-rose/5 text-rose/70 text-[11px] font-medium tracking-wide transition-all"
+          >
+            {prompt}
+          </motion.button>
+        ))}
+      </div>
     </div>
   );
 };
 
-const OnboardingScreen = ({ onFinish }: { onFinish: (data: { style: 'cerita' | 'tanya', age: string }) => void; key?: any }) => {
-  const [step, setStep] = useState<1 | 2>(1);
-  const [style, setStyle] = useState<'cerita' | 'tanya' | null>(null);
-
+const OnboardingScreen = ({ onFinish }: { onFinish: (data: { style: 'cerita' | 'tanya' }) => void; key?: any }) => {
   const handleStyleSelect = (s: 'cerita' | 'tanya') => {
-    setStyle(s);
-    setStep(2);
-  };
-
-  const handleAgeSelect = (age: string) => {
-    if (style) {
-      onFinish({ style, age });
-    }
+    onFinish({ style: s });
   };
 
   return (
@@ -474,68 +478,48 @@ const OnboardingScreen = ({ onFinish }: { onFinish: (data: { style: 'cerita' | '
         <div className="absolute top-[20%] -right-[50px] w-[300px] h-[300px] bg-rose filter blur-[120px] opacity-5" />
       </div>
 
-      <AnimatePresence mode="wait">
-        {step === 1 ? (
-          <motion.div 
-            key="step1"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -20, opacity: 0 }}
-            className="max-w-xs space-y-12 relative z-10"
+      <div className="max-w-xs space-y-12 relative z-10">
+        <div className="space-y-4">
+          <motion.p 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-rose font-light tracking-wide"
           >
-            <div className="space-y-4">
-              <motion.p className="text-rose font-light tracking-wide">Hadir mau kenalan dulu.</motion.p>
-              <h2 className="text-2xl font-light text-offwhite leading-relaxed">
-                Kamu lebih suka gimana kalau lagi butuh ngeluarin sesuatu?
-              </h2>
-            </div>
+            Hadir mau kenalan dulu.
+          </motion.p>
+          <h2 className="text-2xl font-light text-offwhite leading-relaxed">
+            Kamu lebih suka digimanain kalo lagi butuh ngeluarin sesuatu?
+          </h2>
+        </div>
 
-            <div className="flex flex-col gap-4">
-              <button onClick={() => handleStyleSelect('cerita')} className="onboarding-btn">
-                <span>Cerita dulu, dengerin aja</span>
-                <span>→</span>
-              </button>
-              <button onClick={() => handleStyleSelect('tanya')} className="onboarding-btn-secondary">
-                <span>Tanya-tanya gue, biar gue mikir</span>
-                <span>→</span>
-              </button>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="step2"
-            initial={{ x: 20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -20, opacity: 0 }}
-            className="max-w-xs space-y-12 relative z-10"
+        <div className="flex flex-col gap-4">
+          <motion.button 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            onClick={() => handleStyleSelect('cerita')} 
+            className="onboarding-btn group"
           >
-            <div className="space-y-4">
-              <motion.p className="text-rose font-light tracking-wide">Satu lagi...</motion.p>
-              <h2 className="text-2xl font-light text-offwhite leading-relaxed">Fase hidup kamu sekarang lagi di mana?</h2>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <button onClick={() => handleAgeSelect('17-21')} className="onboarding-btn">
-                <span>17 - 21 (Mencari Arah)</span>
-                <span>→</span>
-              </button>
-              <button onClick={() => handleAgeSelect('22-26')} className="onboarding-btn">
-                <span>22 - 26 (Menata Realita)</span>
-                <span>→</span>
-              </button>
-              <button onClick={() => handleAgeSelect('27+')} className="onboarding-btn">
-                <span>27+ (Menerima Masa)</span>
-                <span>→</span>
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <span>Gue mau cerita dulu, lu dengerin aja</span>
+            <span className="opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
+          </motion.button>
+          <motion.button 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            onClick={() => handleStyleSelect('tanya')} 
+            className="onboarding-btn-secondary group"
+          >
+            <span>Tanya-tanya gue, biar gue mikir</span>
+            <span className="opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all">→</span>
+          </motion.button>
+        </div>
+      </div>
       <style>{`
         .onboarding-btn {
           width: 100%;
-          padding: 1rem 1.5rem;
-          border-radius: 1rem;
+          padding: 1.25rem 1.5rem;
+          border-radius: 1.25rem;
           background: rgba(201, 169, 154, 0.05);
           border: 1px solid rgba(201, 169, 154, 0.2);
           color: #C9A99A;
@@ -545,23 +529,25 @@ const OnboardingScreen = ({ onFinish }: { onFinish: (data: { style: 'cerita' | '
           align-items: center;
           justify-content: space-between;
           transition: all 0.3s;
+          text-align: left;
         }
-        .onboarding-btn:hover { background: rgba(201, 169, 154, 0.1); scale: 1.02; }
+        .onboarding-btn:hover { background: rgba(201, 169, 154, 0.1); scale: 1.02; border-color: rgba(201, 169, 154, 0.4); }
         .onboarding-btn-secondary {
           width: 100%;
-          padding: 1rem 1.5rem;
-          border-radius: 1rem;
-          background: rgba(242, 237, 233, 0.05);
+          padding: 1.25rem 1.5rem;
+          border-radius: 1.25rem;
+          background: rgba(242, 237, 233, 0.03);
           border: 1px solid rgba(242, 237, 233, 0.1);
-          color: rgba(242, 237, 233, 0.8);
+          color: rgba(242, 237, 233, 0.7);
           font-size: 0.875rem;
           font-weight: 500;
           display: flex;
           align-items: center;
           justify-content: space-between;
           transition: all 0.3s;
+          text-align: left;
         }
-        .onboarding-btn-secondary:hover { background: rgba(242, 237, 233, 0.1); scale: 1.02; }
+        .onboarding-btn-secondary:hover { background: rgba(242, 237, 233, 0.08); scale: 1.02; border-color: rgba(242, 237, 233, 0.2); }
       `}</style>
     </motion.div>
   );
@@ -704,7 +690,20 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const exchangeCount = useRef(0);
+  const [exchangeCount, setExchangeCount] = useState(0);
+  const [sessionStyle, setSessionStyle] = useState<'cerita' | 'tanya'>(() => {
+    if (typeof window === 'undefined') return 'cerita';
+    const saved = localStorage.getItem(STORAGE_KEYS.STATS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.userStyle || 'cerita';
+      } catch (e) {
+        return 'cerita';
+      }
+    }
+    return 'cerita';
+  });
 
   const [hasLongBreak, setHasLongBreak] = useState(false);
   const [companionMode, setCompanionMode] = useState(() => {
@@ -964,7 +963,7 @@ export default function App() {
   };
 
   const initChat = () => {
-    exchangeCount.current = 0; // Reset for new session
+    setExchangeCount(0);
     setMessages([{
       id: generateId(),
       role: 'assistant',
@@ -1074,8 +1073,9 @@ export default function App() {
       inputRef.current.focus();
     }
     
-    // Core Feature: Only trigger ending after 6 user messages
-    exchangeCount.current += 1;
+    // Core Feature: Only trigger ending after 15 user messages
+    const newCount = exchangeCount + 1;
+    setExchangeCount(newCount);
 
     try {
       // Call Gemini
@@ -1086,8 +1086,7 @@ export default function App() {
         stats.lastMood,
         stats.totalSessions,
         stats.memoryBank,
-        stats.userStyle,
-        stats.userAge
+        sessionStyle
       );
 
       // Parse Mood
@@ -1126,19 +1125,18 @@ export default function App() {
       setIsLoading(false);
     }
 
-    // Trigger closing after 15 user messages
-    if (exchangeCount.current >= 15) {
+    if (newCount >= 15) {
       setTimeout(() => {
         triggerRecapAndClose();
       }, 5000);
     }
   };
 
-  const handleOnboardingFinish = (data: { style: 'cerita' | 'tanya', age: string }) => {
+  const handleOnboardingFinish = (data: { style: 'cerita' | 'tanya' }) => {
     const newStats = {
       ...stats,
       userStyle: data.style,
-      userAge: data.age
+      userAge: undefined
     };
     setStats(newStats);
     localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
@@ -1168,8 +1166,7 @@ export default function App() {
         stats.lastMood,
         stats.totalSessions,
         stats.memoryBank,
-        stats.userStyle,
-        stats.userAge
+        sessionStyle
       );
       setMessages(prev => [...prev, {
         id: `refl-ai-${generateId()}`,
@@ -1421,7 +1418,10 @@ export default function App() {
                 ))}
                 
                 {messages.length === 1 && !isLoading && (
-                  <IcebreakerPrompts onSelect={handleSendMessage} day={stats.currentDay || 1} />
+                  <IcebreakerPrompts 
+                    onSelect={handleSendMessage} 
+                    day={stats.currentDay || 1} 
+                  />
                 )}
 
                 {isLoading && (
