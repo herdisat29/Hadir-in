@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Heart, Bell, BellOff, Bug, RotateCcw, FastForward, Plus, Volume2 } from 'lucide-react';
+import { Send, Heart, Bell, BellOff, Bug, RotateCcw, FastForward, Plus, Wind, History } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { AppScreen, Message, UserStats } from './types';
 import { 
@@ -13,7 +13,8 @@ import {
   COLORS, 
   SYSTEM_PROMPT,
   RANDOM_NUDGES,
-  TIME_GREETINGS
+  TIME_GREETINGS,
+  MOOD_CONFIGS
 } from './constants';
 import { getHadirResponse, getRecapMessage } from './services/geminiService';
 
@@ -23,9 +24,13 @@ const isDev = typeof window !== 'undefined' && (
   window.location.hostname.includes('ais-dev')
 );
 
+const generateId = () => {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 // --- Components ---
 
-const SplashScreen = ({ onStart, hasLongBreak }: { onStart: () => void; hasLongBreak?: boolean; key?: any }) => {
+const SplashScreen = ({ onStart, hasLongBreak, onOpenArsip, hasHistory }: { onStart: () => void; hasLongBreak?: boolean; onOpenArsip: () => void; hasHistory: boolean; key?: any }) => {
   const [notifPermission, setNotifPermission] = useState<string>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
@@ -109,6 +114,19 @@ const SplashScreen = ({ onStart, hasLongBreak }: { onStart: () => void; hasLongB
         {hasLongBreak ? 'Mulai Lagi' : 'Mulai'}
       </motion.button>
 
+      {hasHistory && (
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.4 }}
+          whileHover={{ opacity: 0.8 }}
+          transition={{ delay: 1.2 }}
+          onClick={onOpenArsip}
+          className="mt-6 text-[10px] text-offwhite uppercase tracking-[0.3em] font-light"
+        >
+          Lihat Arus Cerita
+        </motion.button>
+      )}
+
       {notifPermission === 'default' && (
         <motion.button
           initial={{ opacity: 0 }}
@@ -160,7 +178,7 @@ const ReflectionScreen = ({ onFinish }: { onFinish: (answer: string) => void; ke
   );
 };
 
-const ClosingScreen = ({ day, history, onRestart, onBackToStart }: { day: number; history: string[]; onRestart: () => void; onBackToStart: () => void; key?: any }) => {
+const ClosingScreen = ({ day, history, onRestart }: { day: number; history: string[]; onRestart: () => void; key?: string }) => {
   const getDayText = (num: number) => {
     const texts = ['pertama', 'kedua', 'ketiga', 'keempat', 'kelima', 'keenam', 'ketujuh'];
     return texts[num - 1] || `${num}`;
@@ -207,23 +225,12 @@ const ClosingScreen = ({ day, history, onRestart, onBackToStart }: { day: number
         >
           istirahat ya
         </motion.button>
-
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.3 }}
-          whileHover={{ opacity: 0.6 }}
-          transition={{ delay: 2 }}
-          onClick={onBackToStart}
-          className="text-[9px] uppercase tracking-[0.3em] text-rose/50 border-b border-rose/10 pb-0.5"
-        >
-          Back to start
-        </motion.button>
       </div>
     </motion.div>
   );
 };
 
-const AlreadyCheckedInScreen = ({ onBackToStart }: { onBackToStart: () => void }) => {
+const AlreadyCheckedInScreen = (props: { key?: string }) => {
   return (
     <motion.div 
       id="already-checked-in-screen"
@@ -231,28 +238,166 @@ const AlreadyCheckedInScreen = ({ onBackToStart }: { onBackToStart: () => void }
       animate={{ opacity: 1 }}
       className="absolute inset-0 flex flex-col items-center justify-center bg-darker z-50 p-6 text-center"
     >
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[30%] left-[20%] w-[250px] h-[250px] bg-rose filter blur-[100px] opacity-[0.03]" />
+      </div>
+
       <div className="space-y-8 relative z-10">
-        <div className="space-y-2">
-          <p className="text-rose text-lg tracking-wide font-light italic">Makasih udah hadir hari ini.</p>
-          <p className="text-offwhite/60 font-light text-sm">Gue dengerin kok. Besok kita ngobrol lagi ya.</p>
+        <div className="space-y-3">
+          <p className="text-rose text-xl tracking-wide font-light italic">Satu hari, satu cerita.</p>
+          <p className="text-offwhite/70 font-light text-sm max-w-[240px] mx-auto leading-relaxed">
+            Makasih ya hari ini udah mampir. <br/>Gue simpen ceritanya baik-baik.
+          </p>
         </div>
-        <p className="text-text-muted text-[10px] tracking-[0.3em] uppercase opacity-50">ada. dengerin. hadir.</p>
-        
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          onClick={onBackToStart}
-          className="mt-12 px-8 py-3 rounded-full border border-rose/10 text-rose/60 text-[10px] uppercase tracking-widest hover:bg-rose/5 transition-all"
-        >
-          Kembali ke awal
-        </motion.button>
+        <div className="flex flex-col items-center gap-6">
+          <p className="text-text-muted text-[10px] tracking-[0.4em] uppercase opacity-40">hadir. dengerin. jaga.</p>
+          <motion.div 
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 1.5, ease: "easeInOut" }}
+            className="w-12 h-px bg-rose/20" 
+          />
+        </div>
       </div>
     </motion.div>
   );
 };
 
-const MessageBubble = ({ msg, onSpeak }: { msg: Message; onSpeak?: (text: string) => void; key?: any }) => {
+const ArsipOverlay = ({ history, onClose }: { history: string[]; onClose: () => void; key?: string }) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[100] bg-darker/95 backdrop-blur-2xl p-8 flex flex-col"
+    >
+      <div className="flex items-center justify-between mb-12">
+        <h2 className="text-rose text-sm font-light tracking-[0.4em] uppercase">Arus Cerita</h2>
+        <motion.button 
+          whileTap={{ scale: 0.9 }}
+          onClick={onClose}
+          className="text-offwhite/40 text-[10px] tracking-widest uppercase border border-offwhite/10 px-4 py-2 rounded-full"
+        >
+          Tutup
+        </motion.button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-none space-y-12 pb-12">
+        {history.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-center">
+            <p className="text-offwhite/20 text-sm italic font-light">Belum ada cerita yang tersimpan.</p>
+          </div>
+        ) : (
+          history.slice().reverse().map((entry, idx) => (
+            <motion.div 
+              key={`arsip-${idx}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              className="space-y-3 relative active:opacity-70 transition-opacity"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-rose/40" />
+                <span className="text-[10px] text-rose/30 tracking-[0.2em] font-medium uppercase">
+                  Momen {history.length - idx}
+                </span>
+              </div>
+              <p className="text-offwhite/80 font-light leading-relaxed italic text-lg pl-4 border-l border-rose/10">
+                "{entry}"
+              </p>
+            </motion.div>
+          ))
+        )}
+      </div>
+
+      <div className="pt-8 border-t border-offwhite/5 text-center">
+        <p className="text-[10px] text-rose/20 tracking-[0.3em] uppercase">Setiap kata lo berharga.</p>
+      </div>
+    </motion.div>
+  );
+};
+
+const BreathOverlay = ({ onClose }: { onClose: () => void; key?: string }) => {
+  const [phase, setPhase] = useState<'Tarik' | 'Tahan' | 'Buang'>('Tarik');
+
+  useEffect(() => {
+    const cycle = setInterval(() => {
+      setPhase(p => {
+        if (p === 'Tarik') return 'Tahan';
+        if (p === 'Tahan') return 'Buang';
+        return 'Tarik';
+      });
+    }, 4000); // 4 detik per fase
+    return () => clearInterval(cycle);
+  }, []);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-[110] bg-darker/90 backdrop-blur-3xl flex flex-col items-center justify-center p-8"
+    >
+      <div className="relative flex items-center justify-center w-64 h-64">
+        {/* Glow Layer */}
+        <motion.div 
+          animate={{ 
+            scale: phase === 'Tarik' ? 1.8 : (phase === 'Tahan' ? 1.8 : 1),
+            opacity: phase === 'Tarik' ? 0.3 : (phase === 'Tahan' ? 0.3 : 0.1)
+          }}
+          transition={{ duration: 4, ease: "easeInOut" }}
+          className="absolute w-full h-full rounded-full bg-rose filter blur-3xl"
+        />
+
+        {/* Circle Guide */}
+        <motion.div 
+          animate={{ 
+            scale: phase === 'Tarik' ? 1.3 : (phase === 'Tahan' ? 1.3 : 0.8),
+          }}
+          transition={{ duration: 4, ease: "easeInOut" }}
+          className="w-32 h-32 rounded-full border border-rose/30 flex items-center justify-center"
+        >
+          <AnimatePresence mode="wait">
+            <motion.p 
+              key={phase}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.1 }}
+              transition={{ duration: 0.5 }}
+              className="text-rose text-[10px] tracking-[0.4em] uppercase font-light translate-x-0.5 text-center px-2"
+            >
+              {phase === 'Tarik' ? 'Tarik Napas' : (phase === 'Tahan' ? 'Tahan Dulu' : 'Buang Pelan')}
+            </motion.p>
+          </AnimatePresence>
+        </motion.div>
+      </div>
+
+      <div className="mt-16 flex flex-col items-center gap-2">
+        <p className="text-offwhite/40 text-sm font-light italic text-center max-w-[200px] leading-relaxed">
+          Rasain udara yang masuk dan keluar. Gak ada beban di sini.
+        </p>
+        <div className="flex gap-1 mt-4">
+          {['Tarik', 'Tahan', 'Buang'].map(s => (
+            <div 
+              key={s} 
+              className={`w-1 h-1 rounded-full transition-all duration-500 ${phase === s ? 'bg-rose w-4' : 'bg-rose/10'}`} 
+            />
+          ))}
+        </div>
+      </div>
+
+      <motion.button 
+        whileTap={{ scale: 0.9 }}
+        onClick={onClose}
+        className="mt-12 text-rose/60 text-[10px] tracking-[0.3em] uppercase border-b border-rose/20 pb-1"
+      >
+        Selesai
+      </motion.button>
+    </motion.div>
+  );
+};
+
+const MessageBubble = ({ msg }: { msg: Message; key?: any }) => {
   const isAssistant = msg.role === 'assistant';
 
   return (
@@ -265,17 +410,6 @@ const MessageBubble = ({ msg, onSpeak }: { msg: Message; onSpeak?: (text: string
           : 'bg-rose text-darker font-medium rounded-br-none shadow-lg shadow-rose/5'
       }`}>
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-        
-        {isAssistant && onSpeak && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            whileHover={{ opacity: 1 }}
-            className="absolute -right-10 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-offwhite/5 transition-all text-rose/40 hover:text-rose"
-            onClick={() => onSpeak(msg.content)}
-          >
-            <Volume2 size={14} />
-          </motion.button>
-        )}
       </div>
     </div>
   );
@@ -297,7 +431,7 @@ const IcebreakerPrompts = ({ onSelect, day }: { onSelect: (text: string) => void
     <div className="flex flex-wrap gap-2 px-6 mt-4">
       {prompts.map((prompt, idx) => (
         <motion.button
-          key={idx}
+          key={`icebreaker-${idx}`}
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5 + (idx * 0.1) }}
@@ -444,7 +578,7 @@ const CalendarProgress = ({ streak }: { streak: number }) => {
         const isActive = dotNum <= weekDay;
         return (
           <motion.div
-            key={dotNum}
+            key={`cal-dot-${dotNum}`}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: dotNum * 0.1 }}
@@ -493,7 +627,19 @@ export default function App() {
     const saved = localStorage.getItem(STORAGE_KEYS.MESSAGES);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const unique: Message[] = [];
+          const seen = new Set();
+          for (const m of parsed) {
+            if (m && m.id && !seen.has(m.id)) {
+              seen.add(m.id);
+              unique.push(m);
+            }
+          }
+          return unique;
+        }
+        return [];
       } catch (e) {
         return [];
       }
@@ -502,6 +648,19 @@ export default function App() {
   });
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [currentMood, setCurrentMood] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'neutral';
+    const saved = localStorage.getItem(STORAGE_KEYS.STATS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.visualMood || 'neutral';
+      } catch (e) {
+        return 'neutral';
+      }
+    }
+    return 'neutral';
+  });
   const [stats, setStats] = useState<UserStats>(() => {
     if (typeof window === 'undefined') return {
       streak: 0,
@@ -563,8 +722,9 @@ export default function App() {
       
       const hasBeenPrompted = localStorage.getItem('install_prompted') === 'true';
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+      const isMatureUser = stats.streak >= 3;
 
-      if (!hasBeenPrompted && !isStandalone) {
+      if (!hasBeenPrompted && !isStandalone && isMatureUser) {
         setShowInstallBanner(true);
       }
     };
@@ -631,6 +791,8 @@ export default function App() {
     localStorage.setItem('companion_mode', String(newState));
   };
   const [showDebug, setShowDebug] = useState(false);
+  const [showArsip, setShowArsip] = useState(false);
+  const [showBreath, setShowBreath] = useState(false);
 
   const debugConclude = () => {
     triggerRecapAndClose();
@@ -657,13 +819,33 @@ export default function App() {
       setStats(newStats);
       localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(newStats));
       localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+      setMessages([]);
+      setIsLoading(false);
+      setScreen(AppScreen.SPLASH);
     }
   };
 
   const debugReset = () => {
-    localStorage.removeItem(STORAGE_KEYS.STATS);
-    localStorage.removeItem(STORAGE_KEYS.MESSAGES);
-    window.location.reload();
+    localStorage.clear();
+    setMessages([]);
+    setStats({
+      streak: 0,
+       lastCheckIn: null,
+       totalSessions: 0,
+       currentDay: 1,
+       lastMood: 'neutral',
+       memoryBank: [],
+       userStyle: 'neutral',
+       userAge: 'unknown',
+       lastOpen: new Date().toISOString()
+    });
+    setScreen(AppScreen.SPLASH);
+    setIsLoading(false);
+    
+    // Hard reload
+    setTimeout(() => {
+      window.location.href = window.location.origin + window.location.pathname;
+    }, 100);
   };
 
   useEffect(() => {
@@ -784,7 +966,7 @@ export default function App() {
   const initChat = () => {
     exchangeCount.current = 0; // Reset for new session
     setMessages([{
-      id: '1',
+      id: generateId(),
       role: 'assistant',
       content: 'Gimana mood kamu hari ini?',
       timestamp: Date.now()
@@ -847,7 +1029,7 @@ export default function App() {
       const recap = await getRecapMessage(apiMessages);
       
       const recapMsg: Message = {
-        id: `recap-${Date.now()}`,
+        id: `recap-${generateId()}`,
         role: 'assistant',
         content: recap,
         timestamp: Date.now()
@@ -876,7 +1058,7 @@ export default function App() {
     if (!text.trim() || isLoading) return;
 
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: `user-${generateId()}`,
       role: 'user',
       content: text,
       timestamp: Date.now()
@@ -898,7 +1080,7 @@ export default function App() {
     try {
       // Call Gemini
       const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
-      const response = await getHadirResponse(
+      const rawResponse = await getHadirResponse(
         apiMessages, 
         stats.currentDay,
         stats.lastMood,
@@ -908,10 +1090,25 @@ export default function App() {
         stats.userAge
       );
 
+      // Parse Mood
+      let mood = 'neutral';
+      let cleanResponse = rawResponse;
+      const moodMatch = rawResponse.match(/\[MOOD:(.*?)\]/);
+      if (moodMatch) {
+        mood = moodMatch[1].toLowerCase().trim();
+        cleanResponse = rawResponse.replace(/\[MOOD:(.*?)\]/, '').trim();
+        setCurrentMood(mood);
+        
+        // Update stats with new mood
+        const updatedStats = { ...stats, visualMood: mood };
+        setStats(updatedStats);
+        localStorage.setItem(STORAGE_KEYS.STATS, JSON.stringify(updatedStats));
+      }
+
       const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `ai-${generateId()}`,
         role: 'assistant',
-        content: response,
+        content: cleanResponse,
         timestamp: Date.now()
       };
 
@@ -919,7 +1116,7 @@ export default function App() {
     } catch (error) {
       console.error("AI Error:", error);
       const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `error-${generateId()}`,
         role: 'assistant',
         content: "Eh sorry, gue lagi gak bisa dengerin dengan baik sekarang. Coba lagi ya?",
         timestamp: Date.now()
@@ -949,20 +1146,6 @@ export default function App() {
     initChat();
   };
 
-  const handleSpeak = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    
-    // Stop any current speech
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'id-ID';
-    utterance.rate = 0.9; // Breathier / slower for Sufi vibe
-    utterance.pitch = 0.9;
-    
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
   const handleQuickReply = (mood: string) => {
     handleSendMessage(mood);
   };
@@ -971,7 +1154,7 @@ export default function App() {
     // Just a warm acknowledgment for reflection
     setScreen(AppScreen.CHAT);
     setMessages([{
-      id: 'refl-1',
+      id: `refl-user-${generateId()}`,
       role: 'user',
       content: answer,
       timestamp: Date.now()
@@ -989,7 +1172,7 @@ export default function App() {
         stats.userAge
       );
       setMessages(prev => [...prev, {
-        id: 'refl-2',
+        id: `refl-ai-${generateId()}`,
         role: 'assistant',
         content: response,
         timestamp: Date.now()
@@ -997,7 +1180,7 @@ export default function App() {
     } catch (error) {
       console.error("AI Error (Reflection):", error);
       setMessages(prev => [...prev, {
-        id: 'refl-err',
+        id: `refl-error-${generateId()}`,
         role: 'assistant',
         content: "Eh sorry, gue lagi gak bisa dengerin dengan baik sekarang. Coba lagi ya?",
         timestamp: Date.now()
@@ -1087,8 +1270,29 @@ export default function App() {
         </div>
 
         <AnimatePresence mode="wait">
+          {showArsip && (
+            <ArsipOverlay 
+              key="arsip-overlay"
+              history={stats.memoryBank} 
+              onClose={() => setShowArsip(false)} 
+            />
+          )}
+
+          {showBreath && (
+            <BreathOverlay 
+              key="breath-overlay"
+              onClose={() => setShowBreath(false)} 
+            />
+          )}
+
           {screen === AppScreen.SPLASH && (
-            <SplashScreen key="splash" onStart={startSession} hasLongBreak={hasLongBreak} />
+            <SplashScreen 
+              key="splash" 
+              onStart={startSession} 
+              hasLongBreak={hasLongBreak} 
+              onOpenArsip={() => setShowArsip(true)}
+              hasHistory={stats.memoryBank.length > 0}
+            />
           )}
 
           {screen === AppScreen.ONBOARDING && (
@@ -1108,7 +1312,59 @@ export default function App() {
               exit={{ opacity: 0 }}
               className="flex-1 flex flex-col h-full relative overflow-hidden"
             >
-            {/* Soft Day Indicator */}
+              {/* Mood Landscape Background */}
+              <motion.div 
+                initial={false}
+                animate={{ 
+                  backgroundColor: MOOD_CONFIGS[currentMood]?.colors[0] || MOOD_CONFIGS.neutral.colors[0],
+                }}
+                transition={{ duration: 4, ease: "easeInOut" }}
+                className="absolute inset-0 -z-10 overflow-hidden"
+              >
+                {/* Ambient Glow */}
+                <motion.div 
+                  animate={{ 
+                    opacity: [0.1, 0.15, 0.1],
+                    scale: [1, 1.1, 1],
+                  }}
+                  transition={{ 
+                    duration: MOOD_CONFIGS[currentMood]?.velocity || 20, 
+                    repeat: Infinity, 
+                    ease: "easeInOut" 
+                  }}
+                  className="absolute inset-0 filter blur-[120px]"
+                  style={{
+                    background: `radial-gradient(circle at 50% 50%, ${MOOD_CONFIGS[currentMood]?.colors[2] || MOOD_CONFIGS.neutral.colors[2]} 0%, transparent 70%)`
+                  }}
+                />
+                
+                {/* Subtle Dust/Particles */}
+                <div className="absolute inset-0 pointer-events-none opacity-20">
+                  {[...Array(6)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      animate={{
+                        y: currentMood === 'heavy' ? [0, 100, 0] : [-20, 20, -20],
+                        x: i % 2 === 0 ? [-10, 10, -10] : [10, -10, 10],
+                        opacity: [0.1, 0.3, 0.1],
+                      }}
+                      transition={{
+                        duration: (MOOD_CONFIGS[currentMood]?.velocity || 20) * (1 + (i * 0.2)),
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: i * 0.5
+                      }}
+                      className="absolute w-1 h-1 bg-offwhite/10 rounded-full blur-[1px]"
+                      style={{
+                        top: `${Math.random() * 100}%`,
+                        left: `${Math.random() * 100}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+
+              {/* Soft Day Indicator */}
             <div className="absolute top-6 left-0 right-0 text-center pointer-events-none z-20">
               <div className="space-y-1">
                 <span className="text-[10px] tracking-[0.2em] text-rose/30 uppercase font-medium">
@@ -1119,7 +1375,27 @@ export default function App() {
             </div>
 
             {/* Top Controls */}
-            <div className="absolute top-6 right-6 z-30">
+            <div className="absolute top-6 left-6 z-30">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowArsip(true)}
+                className="p-2.5 rounded-full transition-all border bg-darker/40 border-offwhite/5 text-text-muted hover:text-rose"
+                title="Arsip Cerita"
+              >
+                <History size={16} />
+              </motion.button>
+            </div>
+
+            <div className="absolute top-6 right-6 z-30 flex items-center gap-2">
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowBreath(true)}
+                className="p-2.5 rounded-full transition-all border bg-darker/40 border-offwhite/5 text-text-muted hover:text-rose"
+                title="Latihan Napas"
+              >
+                <Wind size={16} />
+              </motion.button>
+              
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={toggleCompanion}
@@ -1141,7 +1417,7 @@ export default function App() {
             >
               <div className="flex flex-col justify-end min-h-full px-4 pb-4 space-y-6">
                 {messages.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} onSpeak={handleSpeak} />
+                  <MessageBubble key={msg.id} msg={msg} />
                 ))}
                 
                 {messages.length === 1 && !isLoading && (
@@ -1258,13 +1534,12 @@ export default function App() {
             day={stats.streak} 
             history={stats.checkInHistory} 
             onRestart={concludeSession} 
-            onBackToStart={() => setScreen(AppScreen.SPLASH)}
           />
         )}
 
         {screen === AppScreen.ALREADY_CHECKED_IN && (
           <AlreadyCheckedInScreen 
-            onBackToStart={() => setScreen(AppScreen.SPLASH)} 
+            key="already-checked-in"
           />
         )}
       </AnimatePresence>

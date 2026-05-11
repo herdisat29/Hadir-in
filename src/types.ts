@@ -21,6 +21,7 @@ export interface UserStats {
   memoryBank: string[];       // Array of short summaries from past sessions
   userStyle?: 'cerita' | 'tanya';
   userAge?: string;
+  visualMood?: string;        // The AI determined mood for visual theme
 }
 
 export enum AppScreen {

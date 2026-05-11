@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, ThinkingLevel } from "@google/genai";
 import { SYSTEM_PROMPT } from "../constants";
 
 const apiKey = process.env.GEMINI_API_KEY;
@@ -34,19 +34,24 @@ export async function getHadirResponse(
 
   try {
     // Filter history for Gemini (ensure starts with user and limited to recent context)
-    const MAX_HISTORY = 12; // Keep last 12 messages (~6 rounds)
+    const MAX_HISTORY = 10; 
     const recentMessages = messages.length > MAX_HISTORY ? messages.slice(-MAX_HISTORY) : messages;
-    
-    // Ensure history starts with 'user' role
     const firstUserIdx = recentMessages.findIndex(m => m.role === 'user');
     const filteredMessages = firstUserIdx !== -1 ? recentMessages.slice(firstUserIdx) : recentMessages;
+
+    const safetySettings = [
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+    ];
 
     // Retry logic
     let lastError = null;
     for (let i = 0; i < 2; i++) {
       try {
-        const response = await ai.models.generateContent({
-          model: "gemini-flash-latest",
+        const responsePromise = ai.models.generateContent({
+          model: "gemini-3-flash-preview",
           contents: filteredMessages.map(m => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }]
@@ -55,41 +60,49 @@ export async function getHadirResponse(
             systemInstruction: SYSTEM_PROMPT(day, lastMood, totalSessions, memoryBank, userStyle, userAge),
             temperature: 0.7,
             topP: 0.95,
+            safetySettings,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
           },
         });
 
+        // The SDK handles timeout via AbortController if passed, 
+        // but here we wait for the promise from ai.models.generateContent
+        const response: any = await responsePromise;
+
         clearTimeout(timeoutId);
-        if (!response.text) throw new Error("Empty response from AI");
         
-        console.log("AI Request success");
-        return response.text;
-      } catch (err: any) {
-        lastError = err;
-        const errMessage = (err?.message || "").toLowerCase();
-        
-        // Handle safety filters specifically
-        if (errMessage.includes("safety") || errMessage.includes("blocked")) {
+        // Safety block check
+        const candidate = response.candidates?.[0];
+        if (!candidate || candidate.finishReason === 'SAFETY' || candidate.finishReason === 'OTHER') {
           return "Sori, gue gak bisa ngebahas itu. Coba cerita hal lain yuk?";
         }
 
-        // Only retry on network issues or rate limits
-        if (errMessage.includes("network") || errMessage.includes("fetch") || err.status === 429 || errMessage.includes("timeout")) {
-          console.warn(`AI Retry ${i+1} due to: ${errMessage}`);
-          await new Promise(r => setTimeout(r, 1500 * (i + 1))); // Wait 1.5s then 3s
+        const text = response.text;
+        if (!text) throw new Error("Empty response");
+        
+        console.log("AI Request success");
+        return text;
+      } catch (err: any) {
+        lastError = err;
+        const errStr = String(err).toLowerCase();
+        
+        if (errStr.includes("safety") || errStr.includes("blocked") || errStr.includes("finishreason") || errStr.includes("candidate")) {
+          return "Sori, gue gak bisa ngebahas itu. Coba cerita hal lain yuk?";
+        }
+
+        if (errStr.includes("timeout") || errStr.includes("network") || errStr.includes("fetch") || err.status === 429) {
+          console.warn(`Retry ${i+1} due to network/timeout: ${errStr}`);
+          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
           continue;
         }
-        throw err; 
+        throw err;
       }
     }
     throw lastError;
+
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error("Gemini Error:", error);
-    
-    if (error.name === 'AbortError') {
-      return "Sori, request-nya kelamaan. Sinyal lo lagi oke? Coba kirim ulang deh.";
-    }
-    
     return "Maaf, kayaknya koneksi gue lagi nggak stabil. Tapi gue masih di sini nungguin lo. Coba kirim lagi?";
   }
 }
@@ -97,28 +110,47 @@ export async function getHadirResponse(
 export async function getRecapMessage(
   messages: { role: 'user' | 'assistant', content: string }[]
 ) {
-  if (!apiKey) return "Btw, makasih ya udah cerita hari ini. Gue dengerin kok.";
+  const defaultRecap = "Btw, makasih ya udah mampir hari ini. Gue dengerin kok.";
+  if (!apiKey) return defaultRecap;
 
   try {
-    const firstUserIdx = messages.findIndex(m => m.role === 'user');
-    const filteredMessages = firstUserIdx !== -1 ? messages.slice(firstUserIdx) : messages;
+    const userMessages = messages.filter(m => m.role === 'user');
+    if (userMessages.length === 0) {
+      return defaultRecap;
+    }
 
-    const response = await ai.models.generateContent({
+    const firstUserIdx = messages.findIndex(m => m.role === 'user');
+    const filteredMessages = messages.slice(firstUserIdx);
+
+    const safetySettings = [
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+    ];
+
+    const response: any = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: filteredMessages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       })),
       config: {
-        systemInstruction: "Berdasarkan percakapan tadi, buat SATU kalimat singkat yang menunjukkan kamu dengerin. Format: 'Btw, hari ini kamu cerita soal [tema]. Gue dengerin kok.' Satu kalimat. Hangat. Natural. Bahasa Indonesia Gen Z santai (lo/gue).",
+        systemInstruction: "Berdasarkan percakapan singkat tadi, buat SATU kalimat hangat yang menunjukkan kamu dengerin apa yang diceritain user. Format: 'Btw, tadi kamu sempat cerita soal [tema]. Gue dengerin kok.' Pastikan natural, santai (lo/gue), dan JANGAN mengulang instruksi atau menyertakan teks di dalam kurung. Satu kalimat saja.",
         temperature: 0.8,
         topP: 0.95,
+        safetySettings,
       }
     });
 
-    return response.text || "Btw, makasih ya udah cerita hari ini. Gue dengerin kok.";
+    const text = response.text?.trim();
+    if (response.candidates?.[0]?.finishReason === 'SAFETY' || !text) {
+      return defaultRecap;
+    }
+
+    return text;
   } catch (error) {
     console.error("Recap Error:", error);
-    return "Btw, makasih ya udah cerita hari ini. Gue dengerin kok.";
+    return defaultRecap;
   }
 }
+
+

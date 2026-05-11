@@ -6,6 +6,34 @@ export const COLORS = {
   userBubble: '#1E1E1E',
 };
 
+export const MOOD_CONFIGS: Record<string, { colors: string[], velocity: number, opacity: number }> = {
+  neutral: { 
+    colors: ['#0A0A0A', '#121212', '#C9A99A05'], 
+    velocity: 20,
+    opacity: 0.1
+  },
+  calm: { 
+    colors: ['#0A0D12', '#0D141B', '#415A7708'], 
+    velocity: 35,
+    opacity: 0.15
+  },
+  heavy: { 
+    colors: ['#0C0A0C', '#161216', '#7B2CBF05'], 
+    velocity: 60, // Slower perceived movement (longer duration)
+    opacity: 0.08
+  },
+  energetic: { 
+    colors: ['#12100A', '#1B180D', '#FB8B2408'], 
+    velocity: 15,
+    opacity: 0.12
+  },
+  thoughtful: { 
+    colors: ['#0A120F', '#0D1B16', '#2D6A4F05'], 
+    velocity: 25,
+    opacity: 0.1
+  }
+};
+
 export const STORAGE_KEYS = {
   STATS: 'hadir_stats',
   MESSAGES: 'hadir_messages_today',
@@ -56,10 +84,19 @@ Contoh pertanyaan Socratic:
 - 'Apa yang kamu takutin bukan gagal — tapi berhasil?'
 
 Satu pertanyaan. Pelan.
-Tunggu jawaban. Gali lebih dalam.
+Tungggu jawaban. Gali lebih dalam.
 Jangan kasih contoh atau pilihan.
 Biarkan mereka cari jawabannya sendiri.
 ` : ''}
+
+OUTPUT FORMAT (PENTING):
+Selalu akhiri respon kamu dengan tag mood di baris baru paling bawah dalam format: [MOOD:mood_name]. 
+Pilih mood_name yang paling pas dari: neutral, calm, heavy, energetic, thoughtful.
+Contoh:
+"Hmm, gue dengerin kok. Kadang emang capek ya kalo semuanya dateng barengan. 
+
+[MOOD:heavy]"
+
 MISI UTAMA:
 Bikin user ngerasa kalau di dunia yang berisik ini, ada satu sudut (Hadir.in) yang beneran dengerin tanpa nge-judge atau nyuruh-nyuruh mereka berubah.`;
 
