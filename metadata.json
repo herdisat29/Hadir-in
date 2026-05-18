@@ -1,6 +1,6 @@
 {
   "name": "Hadir.in",
   "description": "A minimalist daily emotional check-in app for Gen Z Indonesians. Listen, don't fix.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

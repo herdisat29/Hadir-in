@@ -19,7 +19,7 @@ export interface UserStats {
   lastMood: string | null;    // Short summary
   totalSessions: number;
   memoryBank: string[];       // Array of short summaries from past sessions
-  userStyle?: 'cerita' | 'tanya';
+  userStyle?: 'cerita' | 'tanya' | 'ngobrol';
   userAge?: string;
   visualMood?: string;        // The AI determined mood for visual theme
 }

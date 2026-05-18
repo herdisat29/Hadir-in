@@ -1,155 +1,135 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold, ThinkingLevel } from "@google/genai";
-import { SYSTEM_PROMPT } from "../constants";
+import OpenAI from 'openai';
+import { SYSTEM_PROMPT } from '../constants';
 
-const apiKey = process.env.GEMINI_API_KEY;
-const ai = new GoogleGenAI({ apiKey: apiKey || "" });
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient() {
+  if (!openaiClient) {
+    // Check multiple locations where the key might be stored (favoring GROQ)
+    const apiKey = 
+      import.meta.env.VITE_GROQ_API_KEY || 
+      import.meta.env.VITE_XAI_API_KEY || 
+      (typeof process !== 'undefined' ? (process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY) : null) ||
+      (typeof process !== 'undefined' ? (process.env.XAI_API_KEY || process.env.VITE_XAI_API_KEY) : null);
+    
+    if (!apiKey || apiKey === '' || apiKey.includes('your_xai_api_key')) {
+      throw new Error("GROQ_API_KEY belum diset. Klik 'Settings' > 'Environment Variables' terus tambah VITE_GROQ_API_KEY dengan key dari Groq (gsk_...).");
+    }
+
+    // Identify if it's a Groq key (typically starts with gsk_)
+    const isGroq = apiKey.startsWith('gsk_');
+
+    openaiClient = new OpenAI({
+      apiKey: apiKey,
+      baseURL: isGroq ? "https://api.groq.com/openai/v1" : "https://api.x.ai/v1",
+      dangerouslyAllowBrowser: true 
+    });
+  }
+  return openaiClient;
+}
 
 export async function getHadirResponse(
-  messages: { role: 'user' | 'assistant', content: string }[], 
+  messages: { role: 'user' | 'assistant', content: string }[],
   day: number,
   lastMood?: string | null,
   totalSessions?: number,
   memoryBank?: string[],
-  userStyle?: 'cerita' | 'tanya'
+  userStyle?: 'cerita' | 'tanya' | 'ngobrol'
 ) {
-  console.log("AI Request started", { day, lastMood, totalSessions, userStyle });
-  
-  if (!apiKey) {
-    console.error("AI Request failed: API Key missing");
-    return "Eh sorry, gue lagi ada kendala teknis (API key gak ada). Coba hubungi admin ya?";
-  }
+  const MAX_HISTORY = 10;
+  const history = messages.slice(-MAX_HISTORY);
 
-  // Check online status
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    return "Duh, HP lo lagi offline nih kayaknya. Coba cek sinyal atau wifi bentar yuk?";
-  }
-
-  // Abort controller for timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.warn("AI Request timed out after 45s");
-    controller.abort();
-  }, 45000);
+  const systemInstruction = SYSTEM_PROMPT(day, lastMood || 'neutral', totalSessions || 0, memoryBank, userStyle);
 
   try {
-    // Filter history for Gemini (ensure starts with user and limited to recent context)
-    const MAX_HISTORY = 10; 
-    const recentMessages = messages.length > MAX_HISTORY ? messages.slice(-MAX_HISTORY) : messages;
-    const firstUserIdx = recentMessages.findIndex(m => m.role === 'user');
-    const filteredMessages = firstUserIdx !== -1 ? recentMessages.slice(firstUserIdx) : recentMessages;
+    const openai = getOpenAIClient();
+    
+    // Use appropriate model based on detection
+    const isGroq = openai.apiKey.startsWith('gsk_');
+    const model = isGroq ? "llama-3.3-70b-versatile" : "grok-4.3";
 
-    const safetySettings = [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-    ];
-
-    // Retry logic
-    let lastError = null;
-    for (let i = 0; i < 2; i++) {
-      try {
-        const responsePromise = ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: filteredMessages.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-          })),
-          config: {
-            systemInstruction: SYSTEM_PROMPT(day, lastMood, totalSessions, memoryBank, userStyle),
-            temperature: 0.7,
-            topP: 0.95,
-            safetySettings,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-          },
-        });
-
-        // The SDK handles timeout via AbortController if passed, 
-        // but here we wait for the promise from ai.models.generateContent
-        const response: any = await responsePromise;
-
-        clearTimeout(timeoutId);
-        
-        // Safety block check
-        const candidate = response.candidates?.[0];
-        if (!candidate || candidate.finishReason === 'SAFETY' || candidate.finishReason === 'OTHER') {
-          return "Sori, gue gak bisa ngebahas itu. Coba cerita hal lain yuk?";
-        }
-
-        const text = response.text;
-        if (!text) throw new Error("Empty response");
-        
-        console.log("AI Request success");
-        return text;
-      } catch (err: any) {
-        lastError = err;
-        const errStr = String(err).toLowerCase();
-        
-        if (errStr.includes("safety") || errStr.includes("blocked") || errStr.includes("finishreason") || errStr.includes("candidate")) {
-          return "Sori, gue gak bisa ngebahas itu. Coba cerita hal lain yuk?";
-        }
-
-        if (errStr.includes("timeout") || errStr.includes("network") || errStr.includes("fetch") || err.status === 429) {
-          console.warn(`Retry ${i+1} due to network/timeout: ${errStr}`);
-          await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-          continue;
-        }
-        throw err;
-      }
-    }
-    throw lastError;
-
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error("Gemini Error:", error);
-    return "Maaf, kayaknya koneksi gue lagi nggak stabil. Tapi gue masih di sini nungguin lo. Coba kirim lagi?";
-  }
-}
-
-export async function getRecapMessage(
-  messages: { role: 'user' | 'assistant', content: string }[]
-) {
-  const defaultRecap = "Btw, makasih ya udah mampir hari ini. Gue dengerin kok.";
-  if (!apiKey) return defaultRecap;
-
-  try {
-    const userMessages = messages.filter(m => m.role === 'user');
-    if (userMessages.length === 0) {
-      return defaultRecap;
-    }
-
-    const firstUserIdx = messages.findIndex(m => m.role === 'user');
-    const filteredMessages = messages.slice(firstUserIdx);
-
-    const safetySettings = [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-    ];
-
-    const response: any = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: filteredMessages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      })),
-      config: {
-        systemInstruction: "Berdasarkan percakapan singkat tadi, buat SATU kalimat hangat yang menunjukkan kamu dengerin apa yang diceritain user. Format: 'Btw, tadi kamu sempat cerita soal [tema]. Gue dengerin kok.' Pastikan natural, santai (lo/gue), dan JANGAN mengulang instruksi atau menyertakan teks di dalam kurung. Satu kalimat saja.",
-        temperature: 0.8,
-        topP: 0.95,
-        safetySettings,
-      }
+    const completion = await openai.chat.completions.create({
+      model: model, 
+      messages: [
+        { role: "system", content: systemInstruction },
+        ...history.map(m => ({
+          role: m.role as 'assistant' | 'user',
+          content: m.content
+        }))
+      ],
+      temperature: 0.7,
+      max_tokens: 800,
+      top_p: 0.9,
     });
 
-    const text = response.text?.trim();
-    if (response.candidates?.[0]?.finishReason === 'SAFETY' || !text) {
-      return defaultRecap;
+    let responseText = completion.choices[0]?.message?.content || "Hmm...";
+
+    // Parse mood tag [MOOD:xxx]
+    let mood = 'neutral';
+    const moodMatch = responseText.match(/\[MOOD:(.*?)\]/i);
+    if (moodMatch) {
+      mood = moodMatch[1].toLowerCase().trim();
+      responseText = responseText.replace(/\[MOOD:.*?\]/i, '').trim();
     }
 
-    return text;
-  } catch (error) {
-    console.error("Recap Error:", error);
-    return defaultRecap;
+    return { text: responseText, mood };
+
+  } catch (error: any) {
+    console.error("AI API Error:", error);
+
+    if (error?.status === 429) {
+      return {
+        text: "Hadir lagi penuh bentar — terlalu banyak yang ngobrol sekarang. Tunggu semenit terus coba lagi ya, gue masih nungguin lo.",
+        mood: 'neutral'
+      };
+    }
+
+    if (error?.status === 403) {
+      return {
+        text: "Waduh, saldo API lo abis atau ada masalah akses. Coba cek console provider lo (Groq/xAI) ya biar gue bisa nemenin lo lagi.",
+        mood: 'neutral'
+      };
+    }
+
+    return {
+      text: "Maaf, gue lagi agak gangguan. Coba kirim lagi ya?",
+      mood: 'neutral'
+    };
   }
 }
 
+// ==================== TTS BROWSER (Gratis) ====================
+export async function getTtsAudio(text: string): Promise<void> {
+  if (!('speechSynthesis' in window)) {
+    console.warn("Browser lo gak support TTS.");
+    return;
+  }
 
+  // Stop previous speech
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+
+  // Pengaturan suara Indonesia yang natural
+  utterance.lang = 'id-ID';
+  utterance.rate = 0.92;      // agak pelan biar enak didengar
+  utterance.pitch = 1.05;
+  utterance.volume = 0.95;
+
+  // Coba pilih suara Indonesia terbaik
+  const voices = window.speechSynthesis.getVoices();
+  const indonesianVoice = voices.find(voice => 
+    voice.lang.includes('id') || 
+    voice.name.toLowerCase().includes('indonesia')
+  );
+
+  if (indonesianVoice) {
+    utterance.voice = indonesianVoice;
+  }
+
+  return new Promise((resolve) => {
+    utterance.onend = () => resolve();
+    utterance.onerror = () => resolve();
+    window.speechSynthesis.speak(utterance);
+  });
+}
