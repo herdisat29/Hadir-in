@@ -18,8 +18,32 @@ import {
   requestNotificationPermission, 
   STORAGE_KEYS as NOTIF_KEYS, 
   subscribeToPushNotifications, 
-  testServerPush 
+  testServerPush,
+  showNotification
 } from './services/notificationService';
+
+const NUDGES = [
+  "hari ini kepala lo rame gak?",
+  "udah istirahat belum hari ini?",
+  "gimana hari lo sejauh ini?",
+  "jangan lupa napas pelan-pelan ya.",
+  "lagi pengen cerita atau diem aja dulu?",
+  "semoga hari ini gak terlalu berat.",
+  "masih kuat sampai malam ini?",
+  "kadang capek itu cuma butuh ditemenin bentar.",
+  "hari ini ada hal kecil yang bikin senyum gak?",
+  "kalau dunia lagi berisik, sini dulu aja.",
+  "jangan lupa badan lo juga butuh istirahat.",
+  "gue masih di sini kok.",
+  "malam ini kepala lo lagi mikirin apa?",
+  "pelan-pelan juga gapapa.",
+  "hari ini berat ya kayaknya.",
+  "udah makan belum?",
+  "gak semua hal harus langsung beres hari ini.",
+  "kalau capek, istirahat dulu aja bentar.",
+  "semoga tidur lo nanti lebih tenang.",
+  "kadang hadir sebentar buat diri sendiri juga penting."
+];
 import { getTodayKey } from './utils';
 
 // Components & Screens
@@ -62,8 +86,31 @@ export default function App() {
   const [sessionStyle, setSessionStyle] = useState<'cerita' | 'tanya' | 'ngobrol'>(stats.userStyle || 'cerita');
   const [companionMode, setCompanionMode] = useState(() => localStorage.getItem('companion_mode') === 'true');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>(Notification.permission);
   const installPromptRef = useRef<any>(null);
+
+  // Sync PWA and Notif status
+  useEffect(() => {
+    const checkState = () => {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      setIsStandalone(standalone);
+    };
+    checkState();
+    
+    // Sync notification permission every few seconds because event listeners are unreliable across browsers
+    const timer = setInterval(() => {
+      if (Notification.permission !== notifPermission) {
+        setNotifPermission(Notification.permission);
+      }
+    }, 2000);
+
+    window.addEventListener('appinstalled', () => setIsStandalone(true));
+    return () => {
+      window.removeEventListener('appinstalled', () => setIsStandalone(true));
+      clearInterval(timer);
+    };
+  }, [notifPermission]);
 
   const handleSetSessionStyle = async (s: 'cerita' | 'tanya' | 'ngobrol') => {
     setSessionStyle(s);
@@ -112,21 +159,18 @@ export default function App() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       installPromptRef.current = e;
+      // Force update to show button if event arrives
+      setIsStandalone(window.matchMedia('(display-mode: standalone)').matches);
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  useEffect(() => {
-    if (!installPromptRef.current) return;
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    if (isStandalone) {
-      localStorage.setItem('install_prompted', 'true');
-    }
-  }, []);
-
   const handleInstallClick = async () => {
-    if (!installPromptRef.current) return;
+    if (!installPromptRef.current) {
+      alert("Instalasi PWA cuma bisa di browser penuh (Chrome/Safari) dan gak jalan di dalem frame preview ini. Coba buka di tab baru ya!");
+      return;
+    }
     try {
       installPromptRef.current.prompt();
       const { outcome } = await installPromptRef.current.userChoice;
@@ -142,9 +186,10 @@ export default function App() {
 
   const handleNotificationRequest = async () => {
     try {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
+      const permission = await requestNotificationPermission();
+      if (permission) {
         localStorage.setItem('notifications_enabled', 'true');
+        await subscribeToPushNotifications().catch(console.error);
         alert('Makasih ya. Nanti gue colek kalau lo butuh ditemenin.');
       }
     } catch (err) {
@@ -300,7 +345,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="w-full sm:max-w-md h-[100svh] flex flex-col bg-[#0A0A0A]/40 backdrop-blur-3xl sm:border sm:border-offwhite/5 sm:rounded-[40px] sm:my-8 sm:h-[92dvh] sm:shadow-[0_0_100px_-20px_rgba(201,169,154,0.05)] relative z-10 overflow-hidden">
+      <div className="w-full sm:max-w-md h-[100svh] flex flex-col bg-black/60 backdrop-blur-3xl sm:border sm:border-white/5 sm:rounded-[40px] sm:my-8 sm:h-[92dvh] sm:shadow-[0_0_100px_-20px_rgba(255,255,255,0.03)] relative z-10 overflow-hidden">
         
         <AnimatePresence>
           {showArsip && (
@@ -325,7 +370,7 @@ export default function App() {
                 initial={{ scale: 0.95, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                className="relative w-full max-w-sm bg-[#1a1a1a] border border-offwhite/5 rounded-3xl p-8 overflow-hidden shadow-2xl"
+                className="relative w-full max-w-sm bg-[#0d0d0d] border border-white/5 rounded-3xl p-8 overflow-hidden shadow-2xl"
               >
                 <div className="flex items-center justify-between mb-8">
                   <h2 className="text-offwhite font-medium tracking-tight text-lg">Pengaturan</h2>
@@ -338,7 +383,7 @@ export default function App() {
                   {/* Mode Percakapan */}
                   <div className="space-y-3">
                     <p className="text-[10px] tracking-[0.2em] uppercase text-offwhite/30 font-medium">MODE PERCAKAPAN</p>
-                    <div className="flex bg-[#12100f]/40 p-1 rounded-2xl border border-offwhite/5 overflow-x-auto scrollbar-none">
+                    <div className="flex bg-[#050505]/60 p-1 rounded-2xl border border-white/5 overflow-x-auto scrollbar-none">
                       <button
                         onClick={() => handleSetSessionStyle('cerita')}
                         className={`flex-1 py-3 px-2 rounded-xl text-[10px] font-medium transition-all whitespace-nowrap flex flex-col items-center gap-1.5 ${sessionStyle === 'cerita' ? 'bg-rose/10 text-rose' : 'text-offwhite/30'}`}
@@ -396,10 +441,14 @@ export default function App() {
                   <div className="space-y-3">
                     <p className="text-[10px] tracking-[0.2em] uppercase text-offwhite/30 font-medium">Experimental (Labs)</p>
                     <div className="grid grid-cols-2 gap-2">
-                       {installPromptRef.current && (
+                       {!isStandalone && (
                          <button
                            onClick={handleInstallClick}
-                           className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-rose/10 border border-rose/30 text-rose transition-all group"
+                           className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all group ${
+                             installPromptRef.current 
+                               ? 'bg-rose/10 border-rose/30 text-rose' 
+                               : 'bg-[#12100f]/40 border-offwhite/5 text-offwhite/60 hover:text-rose hover:border-rose/20'
+                           }`}
                          >
                            <Plus size={16} className="group-hover:scale-110 transition-transform" />
                            <span className="text-[10px] font-medium">Install App</span>
@@ -411,6 +460,23 @@ export default function App() {
                       >
                         <Bell size={16} className="group-hover:scale-110 transition-transform" />
                         <span className="text-[10px] font-medium">Tes Notif</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const permission = await requestNotificationPermission();
+                          if (permission) {
+                            await subscribeToPushNotifications().catch(console.error);
+                            const randomBody = NUDGES[Math.floor(Math.random() * NUDGES.length)];
+                            showNotification("Hadir.in", randomBody);
+                            alert("Nudge random dikirim!");
+                          } else {
+                            alert("Duh, permission notif lu ditolak/gak didukung.");
+                          }
+                        }}
+                        className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-[#12100f]/40 border border-offwhite/5 text-offwhite/60 hover:text-rose hover:border-rose/20 transition-all group"
+                      >
+                        <Heart size={16} className="group-hover:scale-110 transition-transform" />
+                        <span className="text-[10px] font-medium">Nudge Random</span>
                       </button>
                       <button
                         onClick={() => testServerPush()}
@@ -477,7 +543,11 @@ export default function App() {
                     <button
                       onClick={async () => {
                         const granted = await requestNotificationPermission();
-                        if (granted) scheduleNotifications(stats.currentDay, getTodayKey());
+                        if (granted) {
+                          scheduleNotifications(stats.currentDay, getTodayKey());
+                          const subbed = await subscribeToPushNotifications().catch(console.error);
+                          if (subbed) alert("Siapp! Nanti gue kabarin ya.");
+                        }
                         setShowNotifPrompt(false);
                       }}
                       className="w-full py-4 bg-rose text-[#12100f] font-bold rounded-2xl"
@@ -550,8 +620,19 @@ export default function App() {
               onShowSettings={() => setShowSettings(true)}
               onShowArsip={() => setShowArsip(true)}
               onShowBreath={() => setShowBreath(true)}
-              onEndSession={() => setScreen(AppScreen.REFLECTION)}
+              onSessionEnd={() => setScreen(AppScreen.CLOSING)}
               onSetSessionStyle={handleSetSessionStyle}
+              notifPermission={notifPermission}
+              onToggleNotif={async () => {
+                const granted = await requestNotificationPermission();
+                setNotifPermission(granted ? 'granted' : 'denied');
+                if (granted) {
+                  const subbed = await subscribeToPushNotifications().catch(console.error);
+                  if (subbed) alert("Notifikasi Push Aktif! Sekarang gue bisa nyapa lo kalau udah waktunya.");
+                } else {
+                  alert("Waduh, akses notif ditolak. Cek setelan browser atau HP kamu ya.");
+                }
+              }}
             />
           ) : screen === AppScreen.CLOSING ? (
             <ClosingScreen 
@@ -567,13 +648,7 @@ export default function App() {
               onEnableNotifications={handleNotificationRequest}
             />
           ) : screen === AppScreen.ALREADY_CHECKED_IN ? (
-            <AlreadyCheckedInScreen 
-              onBack={() => {
-                resetToday();
-                clearMessages();
-                setScreen(AppScreen.SPLASH);
-              }}
-            />
+            <AlreadyCheckedInScreen />
           ) : null}
         </AnimatePresence>
 

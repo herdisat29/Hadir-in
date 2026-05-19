@@ -36,8 +36,11 @@ export async function getHadirResponse(
   memoryBank?: string[],
   userStyle?: 'cerita' | 'tanya' | 'ngobrol'
 ) {
-  const MAX_HISTORY = 10;
-  const history = messages.slice(-MAX_HISTORY);
+  const MAX_HISTORY = 6;
+  const history = messages.slice(-MAX_HISTORY).map(m => ({
+    role: m.role,
+    content: m.content.length > 400 ? m.content.slice(0, 400) + '...' : m.content
+  }));
 
   const systemInstruction = SYSTEM_PROMPT(day, lastMood || 'neutral', totalSessions || 0, memoryBank, userStyle);
 

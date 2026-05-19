@@ -106,7 +106,7 @@ export const SplashScreen = ({ onStart, hasLongBreak, onOpenArsip, hasHistory }:
           className="w-full bg-rose text-[#12100f] text-lg h-14 rounded-full flex items-center justify-center font-medium hover:opacity-90 active:scale-95 transition-all duration-300"
           whileTap={{ scale: 0.95 }}
         >
-          {hasLongBreak ? 'Mulai Lagi' : 'Mulai'}
+          {hasLongBreak ? 'Hadir lagi' : 'Lanjut'}
         </motion.button>
 
         <div className="flex flex-col items-center gap-4">

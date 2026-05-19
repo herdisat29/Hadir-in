@@ -69,16 +69,17 @@ export const useChat = (
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Initialize Speech Recognition
-  useEffect(() => {
+  const initRecognition = () => {
+    if (recognitionRef.current) return recognitionRef.current;
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'id-ID';
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'id-ID';
 
-      recognitionRef.current.onresult = (event: any) => {
+      recognition.onresult = (event: any) => {
         let interimTranscript = '';
         let finalTranscript = '';
 
@@ -96,16 +97,23 @@ export const useChat = (
         }
       };
 
-      recognitionRef.current.onerror = (event: any) => {
+      recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          alert("Izin mic ditolak. Cek setelan browser kamu ya biar kita bisa ngobrol lewat suara.");
+        }
         setIsListening(false);
       };
 
-      recognitionRef.current.onend = () => {
+      recognition.onend = () => {
         setIsListening(false);
       };
+
+      recognitionRef.current = recognition;
+      return recognition;
     }
-  }, []);
+    return null;
+  };
 
   // Persist messages
   useEffect(() => {
@@ -118,17 +126,45 @@ export const useChat = (
   }, [messages]);
 
   const toggleListening = () => {
+    const recognition = initRecognition();
+    if (!recognition) {
+      alert("Browser lo gak support rekam suara / Speech Recognition.");
+      return;
+    }
+
     if (isListening) {
-      recognitionRef.current?.stop();
+      recognition.stop();
     } else {
+      // Stop speech if speaking
+      if (isSpeaking && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+      
       setUserInput('');
-      recognitionRef.current?.start();
-      setIsListening(true);
+      try {
+        recognition.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error("Recognition start error:", err);
+      }
     }
   };
 
   const handleSpeak = async (text: string) => {
-    if (isSpeaking) return;
+    if (isSpeaking) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setIsSpeaking(false);
+      return;
+    }
+
+    // Stop listening if active
+    if (isListening) {
+      recognitionRef.current?.stop();
+    }
+
     setIsSpeaking(true);
     
     try {
@@ -136,7 +172,6 @@ export const useChat = (
     } catch (e) {
       console.error(e);
     } finally {
-      // Re-enable speaking state
       setIsSpeaking(false);
     }
   };
@@ -150,6 +185,12 @@ export const useChat = (
       content: text,
       timestamp: Date.now()
     };
+
+    // Stop speaking if active
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
 
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -228,10 +269,10 @@ export const useChat = (
   const initChatMessages = (sessionStyle: 'cerita' | 'tanya' | 'ngobrol' = 'cerita') => {
     setExchangeCount(0);
     const opening = sessionStyle === 'tanya' 
-      ? 'Hadir ada di sini kalau kamu mau mulai mencari apa yang tersembunyi di balik berisiknya hari ini. Apa yang rasanya pengen lo tumpahin duluan?' 
+      ? 'Ada yang lagi mengganjal?' 
       : sessionStyle === 'ngobrol'
-        ? 'Halo lagi. Seneng bisa nemenin lo lagi jam segini. Mau bagi apa hari ini? Gue lagi di sini, beneran dengerin.'
-        : 'Halo. Dunia lagi berisik ya? Tulis aja semuanya di sini, gue saksiin.';
+        ? 'Lagi kepikiran apa?'
+        : 'Hari ini gimana?';
     
     setMessages([{
       id: generateId(),

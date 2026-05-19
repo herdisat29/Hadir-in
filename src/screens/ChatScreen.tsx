@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, History, Wind, Bell, BellOff, Send, Mic, Square, Loader2, Heart, Sparkles, HelpCircle } from 'lucide-react';
+import { Settings, History, Wind, Bell, BellOff, Volume2, Send, Mic, Square, Loader2, Heart, Sparkles, HelpCircle } from 'lucide-react';
 import { Message, UserStats } from '../types';
 import { MOOD_CONFIGS, COLORS, STORAGE_KEYS } from '../constants';
 import { MessageBubble } from '../components/MessageBubble';
@@ -22,14 +22,16 @@ interface ChatScreenProps {
   exchangeCount: number;
   companionMode: boolean;
   isKeyboardOpen: boolean;
+  notifPermission: NotificationPermission;
   onSendMessage: (text: string) => void;
   onToggleListening: () => void;
   onSpeak: (text: string) => void;
   onToggleCompanion: () => void;
+  onToggleNotif: () => void;
   onShowSettings: () => void;
   onShowArsip: () => void;
   onShowBreath: () => void;
-  onEndSession: () => void;
+  onSessionEnd: () => void;
   onSetSessionStyle: (s: 'cerita' | 'tanya' | 'ngobrol') => void;
 }
 
@@ -46,14 +48,16 @@ export const ChatScreen = ({
   exchangeCount,
   companionMode,
   isKeyboardOpen,
+  notifPermission,
   onSendMessage,
   onToggleListening,
   onSpeak,
   onToggleCompanion,
+  onToggleNotif,
   onShowSettings,
   onShowArsip,
   onShowBreath,
-  onEndSession,
+  onSessionEnd,
   onSetSessionStyle
 }: ChatScreenProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -166,7 +170,7 @@ export const ChatScreen = ({
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={onShowSettings}
-          className="relative p-2.5 rounded-full transition-all border bg-[#12100f]/40 border-offwhite/5 text-offwhite/40 hover:text-rose"
+          className="relative p-2.5 rounded-full transition-all border bg-black/40 border-white/5 text-white/40 hover:text-rose"
           title="Pengaturan"
         >
           <Settings size={16} />
@@ -210,15 +214,15 @@ export const ChatScreen = ({
         
         <motion.button
           whileTap={{ scale: 0.9 }}
-          onClick={onToggleCompanion}
+          onClick={onToggleNotif}
           className={`p-2.5 rounded-full transition-all border ${
-            companionMode 
+            notifPermission === 'granted'
               ? 'bg-rose/10 border-rose/30 text-rose shadow-[0_0_15px_rgba(201,169,154,0.1)]' 
-              : 'bg-[#12100f]/40 border-offwhite/5 text-offwhite/40 hover:text-rose'
+              : 'bg-black/40 border-white/5 text-white/40 hover:text-rose'
           }`}
-          title={companionMode ? "Mode Nemenin Aktif" : "Aktifkan Mode Nemenin"}
+          title={notifPermission === 'granted' ? "Notifikasi Aktif" : "Aktifkan Notifikasi"}
         >
-          {companionMode ? <Bell size={16} /> : <BellOff size={16} />}
+          {notifPermission === 'granted' ? <Bell size={16} /> : <BellOff size={16} />}
         </motion.button>
       </div>
 
@@ -234,12 +238,6 @@ export const ChatScreen = ({
           
           {messages.length === 1 && !isLoading && (
             <div className="space-y-2 pt-2">
-              {stats.currentDay > 1 && (
-                <SessionStyleToggle 
-                  currentStyle={sessionStyle} 
-                  onSelect={onSetSessionStyle} 
-                />
-              )}
               <IcebreakerPrompts 
                 onSelect={onSendMessage} 
                 day={stats.currentDay || 1} 
@@ -273,7 +271,7 @@ export const ChatScreen = ({
               className="flex justify-center pt-12 pb-8"
             >
               <button 
-                onClick={onEndSession}
+                onClick={onSessionEnd}
                 className="group flex flex-col items-center gap-4 opacity-30 hover:opacity-100 transition-all duration-1000"
               >
                 <div className="w-px h-16 bg-gradient-to-b from-transparent via-rose/30 to-transparent group-hover:via-rose/60 transition-all duration-1000" />
@@ -288,7 +286,7 @@ export const ChatScreen = ({
 
       {/* Input Area */}
       <div 
-        className={`w-full px-4 pt-1 pb-4 bg-[#12100f]/95 backdrop-blur-md border-t border-offwhite/5 sticky bottom-0 z-40 ${
+        className={`w-full px-4 pt-1 pb-4 bg-black/95 backdrop-blur-md border-t border-white/5 sticky bottom-0 z-40 ${
           isKeyboardOpen ? 'pb-2' : 'pb-[max(20px,env(safe-area-inset-bottom))]'
         }`}
       >
@@ -299,7 +297,7 @@ export const ChatScreen = ({
             }}
             className="max-w-2xl mx-auto"
           >
-            <div className="flex items-end gap-2 bg-[#1a1a1a] border border-offwhite/5 rounded-[28px] px-4 py-1.5 transition-all focus-within:border-rose/20 shadow-lg">
+            <div className="flex items-end gap-2 bg-[#0d0d0d] border border-white/5 rounded-[28px] px-4 py-1.5 transition-all focus-within:border-rose/20 shadow-lg">
               {/* Text Input */}
               <textarea
                 id="chat-input"

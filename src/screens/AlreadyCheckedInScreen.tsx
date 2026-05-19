@@ -1,12 +1,7 @@
 import { motion } from 'motion/react';
-import { RotateCcw } from 'lucide-react';
 import { COLORS } from '../constants';
 
-interface AlreadyCheckedInScreenProps {
-  onBack: () => void;
-}
-
-export const AlreadyCheckedInScreen = ({ onBack }: AlreadyCheckedInScreenProps) => {
+export const AlreadyCheckedInScreen = () => {
   return (
     <motion.div 
       id="already-checked-in-screen"
@@ -33,16 +28,6 @@ export const AlreadyCheckedInScreen = ({ onBack }: AlreadyCheckedInScreenProps) 
             transition={{ duration: 1.5, ease: "easeInOut" }}
             className="w-12 h-px bg-rose/20" 
           />
-          
-          <motion.button
-            whileHover={{ scale: 1.05, color: COLORS.rose }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onBack}
-            className="flex items-center gap-2 text-offwhite/30 text-[10px] tracking-[0.2em] uppercase font-medium hover:text-rose transition-colors"
-          >
-            <RotateCcw size={14} />
-            Kembali ke Awal
-          </motion.button>
         </div>
       </div>
     </motion.div>

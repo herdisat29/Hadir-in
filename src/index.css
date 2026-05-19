@@ -72,7 +72,7 @@ body {
   color: var(--color-offwhite);
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
-  background: radial-gradient(circle at center, #1a1513 0%, #0F0F0F 100%);
+  background: radial-gradient(circle at center, #111111 0%, #000000 100%);
   position: fixed;
   inset: 0;
 }

@@ -32,7 +32,7 @@ export const OnboardingScreen = ({ onFinish }: OnboardingScreenProps) => {
             Hadir mau kenalan dulu.
           </motion.p>
           <h2 className="text-2xl font-light text-offwhite leading-relaxed">
-            Kamu lebih suka digimanain kalo lagi butuh ngeluarin sesuatu?
+            Lo sukanya digimanain kalo lagi butuh ngeluarin sesuatu?
           </h2>
         </div>
 

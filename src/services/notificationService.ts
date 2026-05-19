@@ -6,12 +6,26 @@ export const STORAGE_KEYS = {
 };
 
 const RANDOM_NUDGES = [
-  "gimana hari ini? mau cerita?",
-  "istirahat bentar, narik napas dulu.",
-  "apa yang paling bikin kamu senyum tadi?",
-  "gue di sini kalau kamu butuh temen ngobrol.",
-  "capek ya? gapapa, besok kita coba lagi.",
-  "lagi mikirin apa malam ini?",
+  "hari ini kepala lo rame gak?",
+  "udah istirahat belum hari ini?",
+  "gimana hari lo sejauh ini?",
+  "jangan lupa napas pelan-pelan ya.",
+  "lagi pengen cerita atau diem aja dulu?",
+  "semoga hari ini gak terlalu berat.",
+  "masih kuat sampai malam ini?",
+  "kadang capek itu cuma butuh ditemenin bentar.",
+  "hari ini ada hal kecil yang bikin senyum gak?",
+  "kalau dunia lagi berisik, sini dulu aja.",
+  "jangan lupa badan lo juga butuh istirahat.",
+  "gue masih di sini kok.",
+  "malam ini kepala lo lagi mikirin apa?",
+  "pelan-pelan juga gapapa.",
+  "hari ini berat ya kayaknya.",
+  "udah makan belum?",
+  "gak semua hal harus langsung beres hari ini.",
+  "kalau capek, istirahat dulu aja bentar.",
+  "semoga tidur lo nanti lebih tenang.",
+  "kadang hadir sebentar buat diri sendiri juga penting."
 ];
 
 export const requestNotificationPermission = async (): Promise<boolean> => {
@@ -40,13 +54,20 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export const subscribeToPushNotifications = async () => {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    console.warn('Push reporting: browser not supported');
+    return;
+  }
 
   try {
     const registration = await navigator.serviceWorker.ready;
+    if (!registration.pushManager) {
+      throw new Error("PushManager not available on registration");
+    }
     
     // Get VAPID public key from server
     const res = await fetch('/api/push/key');
+    if (!res.ok) throw new Error("Gagal ambil VAPID key dari server");
     const { publicKey } = await res.json();
 
     const subscription = await registration.pushManager.subscribe({
@@ -54,18 +75,30 @@ export const subscribeToPushNotifications = async () => {
       applicationServerKey: urlBase64ToUint8Array(publicKey)
     });
 
+    // Make sure we have the pure JSON version of subscription
+    const subJSON = subscription.toJSON();
+    console.log('Push subscription object:', subJSON);
+
     // Send subscription to server
-    await fetch('/api/push/subscribe', {
+    const saveRes = await fetch('/api/push/subscribe', {
       method: 'POST',
-      body: JSON.stringify(subscription),
+      body: JSON.stringify(subJSON),
       headers: {
         'Content-Type': 'application/json'
       }
     });
 
+    if (!saveRes.ok) {
+      const errData = await saveRes.json();
+      throw new Error(errData.error || `Server error: ${saveRes.status}`);
+    }
+
     console.log('Push subscription successful');
+    return true;
   } catch (err) {
     console.error('Push subscription failed:', err);
+    alert("Duh, gagal nyambungin ke sistem push: " + (err as Error).message);
+    return false;
   }
 };
 
@@ -74,12 +107,25 @@ export const testServerPush = async () => {
     const res = await fetch('/api/push/test', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      alert(`Berhasil kirim push ke ${data.count} subscriber! Tungguin ya.`);
+      if (data.count > 0) {
+        alert(`Berhasil! Server ngirim push ke ${data.count} subscriber. Cek notif HP lo ya!`);
+      } else {
+        // Double check DB status
+        const dbRes = await fetch('/api/db-status');
+        const dbData = await dbRes.json();
+        
+        if (!dbRes.ok) {
+           alert(`DEBUG: ${dbData.status}\nError: ${dbData.error}\n\nHint: Cek apakah tabel 'push_subscriptions' udah ada di Supabase. \n\nSQL to Run in Supabase SQL Editor:\nCREATE TABLE push_subscriptions (\n  endpoint TEXT PRIMARY KEY,\n  keys JSONB,\n  updated_at TIMESTAMPTZ\n);`);
+        } else {
+           const countMsg = dbData.count !== undefined ? `Jumlah subscriber di DB: ${dbData.count}` : "Gak bisa baca count dari DB.";
+           alert(`Server jalan, tapi subscriber masih 0 di database.\n${countMsg}\n\nPastikan lo udah Klik icon Lonceng/Bel di layar chat, kasih izin (Allow), terus coba lagi.\n\nKalau masih 0, coba REFRESH halaman ini dulu ya.`);
+        }
+      }
     } else {
-      alert("Gagal kirim push. Mungkin belom ada subscriber-nya.");
+      alert("Gagal kirim push: " + (data.error || "Unknown error"));
     }
   } catch (err) {
-    alert("Koneksi server bermasalah pas nyoba push.");
+    alert("Gak bisa konek ke server push. Coba refresh browser deh.");
   }
 };
 
