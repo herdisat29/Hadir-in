@@ -1,32 +1,12 @@
 
+import { getContextualNudge } from '../utils/nudges';
+
 export const STORAGE_KEYS = {
   NOTIF_PERMISSION: 'hadir_notif_permission',
   NOTIF_SCHEDULED_TIME: 'hadir_notif_scheduled_time',
   LAST_APP_OPEN: 'hadir_last_app_open',
 };
 
-const RANDOM_NUDGES = [
-  "hari ini kepala lo rame gak?",
-  "udah istirahat belum hari ini?",
-  "gimana hari lo sejauh ini?",
-  "jangan lupa napas pelan-pelan ya.",
-  "lagi pengen cerita atau diem aja dulu?",
-  "semoga hari ini gak terlalu berat.",
-  "masih kuat sampai malam ini?",
-  "kadang capek itu cuma butuh ditemenin bentar.",
-  "hari ini ada hal kecil yang bikin senyum gak?",
-  "kalau dunia lagi berisik, sini dulu aja.",
-  "jangan lupa badan lo juga butuh istirahat.",
-  "gue masih di sini kok.",
-  "malam ini kepala lo lagi mikirin apa?",
-  "pelan-pelan juga gapapa.",
-  "hari ini berat ya kayaknya.",
-  "udah makan belum?",
-  "gak semua hal harus langsung beres hari ini.",
-  "kalau capek, istirahat dulu aja bentar.",
-  "semoga tidur lo nanti lebih tenang.",
-  "kadang hadir sebentar buat diri sendiri juga penting."
-];
 
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (!('Notification' in window)) return false;
@@ -55,49 +35,37 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export const subscribeToPushNotifications = async () => {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    console.warn('Push reporting: browser not supported');
-    return;
+    alert("Browser lo belum support push notification.");
+    return false;
   }
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    if (!registration.pushManager) {
-      throw new Error("PushManager not available on registration");
-    }
     
-    // Get VAPID public key from server
-    const res = await fetch('/api/push/key');
-    if (!res.ok) throw new Error("Gagal ambil VAPID key dari server");
-    const { publicKey } = await res.json();
+    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidPublicKey) {
+      console.error("VAPID_PUBLIC_KEY tidak ditemukan");
+      return false;
+    }
 
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey)
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
     });
 
-    // Make sure we have the pure JSON version of subscription
-    const subJSON = subscription.toJSON();
-    console.log('Push subscription object:', subJSON);
-
-    // Send subscription to server
-    const saveRes = await fetch('/api/push/subscribe', {
+    const response = await fetch('/api/push/subscribe', {
       method: 'POST',
-      body: JSON.stringify(subJSON),
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription)
     });
 
-    if (!saveRes.ok) {
-      const errData = await saveRes.json();
-      throw new Error(errData.error || `Server error: ${saveRes.status}`);
-    }
+    if (!response.ok) throw new Error("Gagal simpan ke server");
 
-    console.log('Push subscription successful');
+    console.log("✅ Push subscription berhasil disimpan");
     return true;
+
   } catch (err) {
-    console.error('Push subscription failed:', err);
-    alert("Duh, gagal nyambungin ke sistem push: " + (err as Error).message);
+    console.error("Subscribe push gagal:", err);
     return false;
   }
 };
@@ -129,61 +97,11 @@ export const testServerPush = async () => {
   }
 };
 
-let notificationTimer: number | null = null;
-
-export const scheduleNotifications = (streak: number, lastCheckIn?: string) => {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  // Clear existing timer if any
-  if (notificationTimer) {
-    clearTimeout(notificationTimer);
-  }
-
-  const now = new Date();
-  const lastOpen = localStorage.getItem(STORAGE_KEYS.LAST_APP_OPEN);
-  const baseTime = lastOpen ? new Date(lastOpen) : now;
-  
-  // For first-time nudges or checking, let's schedule one sooner (e.g., 2 hours)
-  const isFirstNudge = !localStorage.getItem(STORAGE_KEYS.NOTIF_SCHEDULED_TIME);
-  
-  const nextNotify = new Date(now);
-  if (isFirstNudge) {
-    nextNotify.setHours(now.getHours() + 2);
-  } else {
-    nextNotify.setDate(now.getDate() + 1);
-    nextNotify.setHours(baseTime.getHours(), baseTime.getMinutes(), 0, 0);
-  }
-
-  // Determine message
-  let title = "Hadir.in";
-  let body = RANDOM_NUDGES[Math.floor(Math.random() * RANDOM_NUDGES.length)];
-
-  // Check days since last check-in
-  if (lastCheckIn) {
-    const lastDate = new Date(lastCheckIn);
-    const diffDays = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays >= 5) {
-      body = "udah lama gak mampir. gak harus cerita kok. mampir bentar juga gapapa.";
-    } else if (diffDays >= 2) {
-      body = "lagi pengen sendiri ya? gue masih di sini kok.";
-    }
-  }
-
-  // Streak special
-  if (streak === 7) {
-    body = "seminggu kamu hadir. makasih masih nyempetin.";
-  }
-
-  const delay = nextNotify.getTime() - now.getTime();
-  
-  if (delay > 0) {
-    localStorage.setItem(STORAGE_KEYS.NOTIF_SCHEDULED_TIME, nextNotify.toISOString());
-    notificationTimer = window.setTimeout(() => {
-      showNotification(title, body);
-      // Reschedule for next day after showing
-      scheduleNotifications(streak, lastCheckIn);
-    }, delay);
+export const scheduleNotifications = (stats: any) => {
+  // Client-side scheduler tetap bisa dipakai sebagai cadangan
+  console.log("Contextual nudge system active. Main scheduler di server.");
+  if (stats) {
+    localStorage.setItem(STORAGE_KEYS.LAST_APP_OPEN, new Date().toISOString());
   }
 };
 

@@ -4,6 +4,7 @@ import { Settings, History, Wind, Bell, BellOff, Volume2, Send, Mic, Square, Loa
 import { Message, UserStats } from '../types';
 import { MOOD_CONFIGS, COLORS, STORAGE_KEYS } from '../constants';
 import { MessageBubble } from '../components/MessageBubble';
+import { requestNotificationPermission, subscribeToPushNotifications } from '../services/notificationService';
 import { SessionStyleToggle } from '../components/SessionStyleToggle';
 import { IcebreakerPrompts } from '../components/IcebreakerPrompts';
 import { CalendarProgress } from '../components/CalendarProgress';
@@ -27,7 +28,6 @@ interface ChatScreenProps {
   onToggleListening: () => void;
   onSpeak: (text: string) => void;
   onToggleCompanion: () => void;
-  onToggleNotif: () => void;
   onShowSettings: () => void;
   onShowArsip: () => void;
   onShowBreath: () => void;
@@ -53,7 +53,6 @@ export const ChatScreen = ({
   onToggleListening,
   onSpeak,
   onToggleCompanion,
-  onToggleNotif,
   onShowSettings,
   onShowArsip,
   onShowBreath,
@@ -93,6 +92,29 @@ export const ChatScreen = ({
       inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
     }
   }, [userInput]);
+
+  const handleNotificationClick = async () => {
+    if (notifPermission === 'granted') {
+      alert("Notifikasi sudah aktif ✅\n\nLo akan dapet pengingat tiap malam.");
+      return;
+    }
+
+    // Minta izin dulu
+    const permission = await requestNotificationPermission();
+    
+    if (permission) {
+      // Langsung subscribe ke server
+      const success = await subscribeToPushNotifications();
+      
+      if (success) {
+        alert("✅ Notifikasi berhasil diaktifkan!\n\nMulai sekarang lo akan dapet nudge contextual tiap malam.");
+      } else {
+        alert("Izin dikasih, tapi gagal nyambung ke server. Coba refresh dan klik lagi ya.");
+      }
+    } else {
+      alert("Notifikasi ditolak. Kalau mau nyalain lagi, buka pengaturan browser.");
+    }
+  };
 
   return (
     <motion.div 
@@ -214,13 +236,13 @@ export const ChatScreen = ({
         
         <motion.button
           whileTap={{ scale: 0.9 }}
-          onClick={onToggleNotif}
+          onClick={handleNotificationClick}
           className={`p-2.5 rounded-full transition-all border ${
             notifPermission === 'granted'
-              ? 'bg-rose/10 border-rose/30 text-rose shadow-[0_0_15px_rgba(201,169,154,0.1)]' 
-              : 'bg-black/40 border-white/5 text-white/40 hover:text-rose'
+              ? 'bg-rose/10 border-rose/30 text-rose shadow-[0_0_15px_rgba(201,169,154,0.2)]' 
+              : 'bg-black/40 border-white/5 text-white/40 hover:text-rose hover:border-rose/30'
           }`}
-          title={notifPermission === 'granted' ? "Notifikasi Aktif" : "Aktifkan Notifikasi"}
+          title={notifPermission === 'granted' ? "Notifikasi Aktif" : "Aktifkan Notifikasi Harian"}
         >
           {notifPermission === 'granted' ? <Bell size={16} /> : <BellOff size={16} />}
         </motion.button>

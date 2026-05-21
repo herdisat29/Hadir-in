@@ -4,6 +4,9 @@ import { fileURLToPath } from "url";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync, existsSync } from "fs";
+import { getContextualNudge } from "./src/utils/nudges.js";
+import chatRouter from "./server/api/chat.js";
+import { globalLimiter } from "./server/middleware/rateLimiter.js";
 
 // For CJS compatibility after bundling
 const isProduction = process.env.NODE_ENV === "production";
@@ -11,6 +14,7 @@ const isProduction = process.env.NODE_ENV === "production";
 async function startServer() {
   console.log("=== HADIR.IN SERVER STARTING (SUPABASE MODE) ===");
   const app = express();
+  app.set("trust proxy", 1);
   const PORT = 3000;
 
   // Initialize Supabase
@@ -63,6 +67,8 @@ async function startServer() {
   ];
 
   app.use(express.json());
+  app.use("/api", globalLimiter);
+  app.use("/api", chatRouter);
 
   // Web Push Configuration
   const publicVapidKey = process.env.VITE_VAPID_PUBLIC_KEY || "BK-o7GJxgvS-Po09cPiA-B5ZMRbELqqGIk5VBvcJHd6ai4VbWxQ6YbV_3LWmGFdthL_57VLHjCI4jqtny_vVMp4";
@@ -83,6 +89,94 @@ async function startServer() {
       supabase: supabase ? "initialized" : "null",
       production: isProduction
     });
+  });
+
+  // Direct Daily Nudge Endpoint (Moved from router to avoid nesting issues)
+  app.get("/api/nudge/daily", (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      message: 'Endpoint nudge/daily aktif. Silakan gunakan POST dengan header x-nudge-secret.' 
+    });
+  });
+
+  app.post("/api/nudge/daily", async (req, res) => {
+    console.log('[Nudge] Daily trigger received via POST');
+    const secret = req.headers['x-nudge-secret'];
+    const NUDGE_SECRET = process.env.NUDGE_SECRET || "xx";
+
+    if (secret !== NUDGE_SECRET) {
+      console.error('[Nudge] Unauthorized: secret mismatch');
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!supabase) {
+      console.error('[Nudge] Supabase not initialized');
+      return res.status(500).json({ error: 'Supabase not initialized' });
+    }
+
+    try {
+      console.log('[Nudge] Fetching users with push subscriptions...');
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, stats, push_subscription')
+        .not('push_subscription', 'is', null);
+
+      let usersToNudge = users || [];
+
+      if (userError || usersToNudge.length === 0) {
+        console.log('[Nudge] Falling back to push_subscriptions table');
+        const { data: subs, error: subError } = await supabase
+          .from('push_subscriptions')
+          .select('*');
+        
+        if (!subError && subs) {
+          usersToNudge = subs.map((sub: any) => ({
+            id: sub.endpoint,
+            stats: {},
+            push_subscription: sub
+          }));
+        }
+      }
+
+      console.log(`[Nudge] Processing ${usersToNudge.length} users`);
+      let sentCount = 0;
+      let failedCount = 0;
+
+      const { sendPushNotification } = await import("./server/utils/push.js");
+
+      for (const user of usersToNudge) {
+        try {
+          const stats = user.stats || {};
+          const message = getContextualNudge(stats);
+
+          if (user.push_subscription) {
+            const result = await sendPushNotification(user.push_subscription, {
+              title: "Hadir.in",
+              body: message
+            });
+
+            if (result === true) {
+              sentCount++;
+            } else {
+              failedCount++;
+              if (result && typeof result === 'object' && (result as any).expired) {
+                const endpoint = user.push_subscription.endpoint || user.push_subscription;
+                await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
+                await supabase.from('users').update({ push_subscription: null }).eq('id', user.id).maybeSingle();
+              }
+            }
+          }
+        } catch (e) {
+          failedCount++;
+        }
+      }
+
+      console.log(`[Nudge] Finished. Success: ${sentCount}, Failed: ${failedCount}`);
+      res.json({ success: true, usersProcessed: usersToNudge.length, sent: sentCount, failed: failedCount });
+    } catch (err: any) {
+      console.error('[Nudge] Daily Error:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.get("/api/db-status", async (req, res) => {
@@ -144,12 +238,7 @@ async function startServer() {
       console.error("Push Test Error: supabase is null");
       return res.status(500).json({ error: "Supabase not initialized. Config mungkin bermasalah." });
     }
-    const payload = JSON.stringify({
-      title: "Hadir.in",
-      body: "halo! ini tes push notif dari server. berarti udah jalan beneran 😌",
-      url: "/"
-    });
-
+    
     try {
       console.log("Fetching subscriptions from Supabase...");
       const { data: subs, error } = await supabase.from('push_subscriptions').select('*');
@@ -157,23 +246,33 @@ async function startServer() {
       
       console.log(`Found ${subs?.length || 0} subscriptions.`);
       
-      const promises = (subs || []).map(sub => 
-        webpush.sendNotification(sub as any, payload).catch(async err => {
-          console.warn("Failed to send notification to one subscriber:", err.statusCode);
-          if (err.statusCode === 410 || err.statusCode === 404) {
-             await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
-          }
-        })
-      );
+      let sentCount = 0;
+      const promises = (subs || []).map(async (sub: any) => {
+        const { sendPushNotification } = await import("./server/utils/push.js");
+        const success = await sendPushNotification(sub, {
+          title: "Hadir.in",
+          body: "halo! ini tes push notif dari server. berarti udah jalan beneran 😌"
+        });
+        if (success === true) sentCount++;
+        else if (typeof success === 'object' && success.expired) {
+           await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+        }
+      });
+
       await Promise.all(promises);
-      res.status(200).json({ success: true, count: subs?.length || 0 });
+      res.status(200).json({ success: true, count: sentCount });
     } catch (err) {
       console.error("Push Test Final Error:", err);
       res.status(500).json({ error: "Error pas ngetes push: " + (err as Error).message });
     }
   });
 
-    app.post("/api/push/nudge", async (req, res) => {
+  // Redirect or remove old daily nudge endpoint to use the new router
+  app.post("/api/push/daily", (req, res) => {
+    res.redirect(307, "/api/nudge/daily");
+  });
+
+  app.post("/api/push/nudge", async (req, res) => {
       const body = req.body || {};
 
       const secret = body.secret;

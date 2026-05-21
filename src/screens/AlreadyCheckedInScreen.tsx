@@ -1,7 +1,11 @@
 import { motion } from 'motion/react';
 import { COLORS } from '../constants';
 
-export const AlreadyCheckedInScreen = () => {
+interface AlreadyCheckedInScreenProps {
+  onContinue?: () => void;
+}
+
+export const AlreadyCheckedInScreen = ({ onContinue }: AlreadyCheckedInScreenProps) => {
   return (
     <motion.div 
       id="already-checked-in-screen"
@@ -13,13 +17,25 @@ export const AlreadyCheckedInScreen = () => {
         <div className="absolute top-[30%] left-[20%] w-[250px] h-[250px] bg-rose filter blur-[100px] opacity-[0.03]" />
       </div>
 
-      <div className="space-y-8 relative z-10">
+      <div className="space-y-8 relative z-10 w-full max-w-xs">
         <div className="space-y-3">
           <p className="text-rose text-xl tracking-wide font-light italic">Satu hari, satu cerita.</p>
           <p className="text-offwhite/70 font-light text-sm max-w-[240px] mx-auto leading-relaxed">
             Makasih ya hari ini udah mampir. <br/>Gue simpen ceritanya baik-baik.
           </p>
         </div>
+
+        <div className="flex flex-col gap-3">
+          {onContinue && (
+            <button 
+              onClick={onContinue}
+              className="w-full py-3.5 rounded-2xl bg-rose text-[#12100f] text-sm font-semibold hover:bg-rose/90 transition-all shadow-lg shadow-rose/10"
+            >
+              Tetap Masuk & Lanjut Ngobrol
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-col items-center gap-8">
           <p className="text-offwhite/40 text-[10px] tracking-[0.4em] uppercase opacity-40">hadir. dengerin. jaga.</p>
           <motion.div 

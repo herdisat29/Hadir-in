@@ -19,6 +19,7 @@ const generateId = () => {
 
 export const useChat = (
   stats: UserStats, 
+  updateStats: (updates: Partial<UserStats>) => void,
   onRecapComplete: (recap: string) => void,
   onSessionEnd: () => void
 ) => {
@@ -66,6 +67,19 @@ export const useChat = (
     return 0;
   });
   
+  const saveToMemoryBank = (text: string) => {
+    if (!text || text.length < 18) return; // Terlalu pendek, tidak disimpan
+
+    const summary = text.length > 85 
+      ? text.substring(0, 82) + "..." 
+      : text;
+
+    const currentMemory = stats.memoryBank || [];
+    const newMemory = [summary, ...currentMemory].slice(0, 8); // Maksimal 8 memori
+
+    updateStats({ memoryBank: newMemory });
+  };
+
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -196,6 +210,9 @@ export const useChat = (
     setMessages(newMessages);
     setUserInput('');
     setIsLoading(true);
+
+    // Simpan ke memori bank
+    saveToMemoryBank(text);
     
     const newCount = exchangeCount + 1;
     setExchangeCount(newCount);
@@ -227,6 +244,20 @@ export const useChat = (
 
       setMessages(prev => [...prev, assistantMsg]);
       
+      // Recall memory secara halus (30% chance)
+      if (stats.memoryBank && stats.memoryBank.length > 1 && Math.random() > 0.7) {
+        const oldMemory = stats.memoryBank[1]; // memory sebelumnya
+        setTimeout(() => {
+          const recallMsg: Message = {
+            id: `recall-${generateId()}`,
+            role: 'assistant',
+            content: `Gue masih inget lo pernah bilang "${oldMemory}"`,
+            timestamp: Date.now()
+          };
+          setMessages(prev => [...prev, recallMsg]);
+        }, 1800);
+      }
+
       if (newCount >= 8) {
         setTimeout(() => {
           const recap = RECAP_MESSAGES[
@@ -268,11 +299,27 @@ export const useChat = (
   };
   const initChatMessages = (sessionStyle: 'cerita' | 'tanya' | 'ngobrol' = 'cerita') => {
     setExchangeCount(0);
-    const opening = sessionStyle === 'tanya' 
-      ? 'Ada yang lagi mengganjal?' 
-      : sessionStyle === 'ngobrol'
-        ? 'Lagi kepikiran apa?'
+    
+    const memoryBank = stats.memoryBank || [];
+    const recentMemory = memoryBank.length > 0 ? memoryBank[0] : null;
+
+    let opening = '';
+
+    if (sessionStyle === 'tanya') {
+      opening = recentMemory 
+        ? `Kemarin lo cerita "${recentMemory}"... Masih ada yang mengganjal?`
+        : 'Ada yang lagi mengganjal hari ini?';
+    } 
+    else if (sessionStyle === 'ngobrol') {
+      opening = recentMemory 
+        ? `Lagi kepikiran apa? Terakhir lo bahas "${recentMemory}"...`
+        : 'Lagi kepikiran apa?';
+    } 
+    else { // cerita (default)
+      opening = recentMemory 
+        ? `Hari ini gimana? Kemarin lo sempat cerita soal "${recentMemory}"...`
         : 'Hari ini gimana?';
+    }
     
     setMessages([{
       id: generateId(),
@@ -295,6 +342,7 @@ export const useChat = (
     handleSendMessage,
     clearMessages,
     initChatMessages,
+    saveToMemoryBank,
     setMessages
   };
 };

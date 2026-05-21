@@ -16,82 +16,69 @@ interface ReflectionScreenProps {
 
 export const ReflectionScreen = ({ onFinish, onCancel }: ReflectionScreenProps) => {
   const [answer, setAnswer] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const responseText = useMemo(() => 
-    REFLECTION_RESPONSES[Math.floor(Math.random() * REFLECTION_RESPONSES.length)], 
-  []);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   const handleSubmit = () => {
     if (!answer.trim()) return;
-    setIsSubmitting(true);
+    setIsSubmitted(true);
+    
     setTimeout(() => {
       onFinish(answer);
-    }, 2500);
+    }, 2200);
   };
-  
+
   return (
     <motion.div 
-      id="reflection-screen"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="absolute inset-0 flex flex-col items-center justify-center bg-[#12100f] z-40 p-10 text-center"
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 bg-[#12100f]/95 flex items-center justify-center p-8 z-50"
     >
-      <div className="max-w-md space-y-8 w-full">
-        <h2 className="text-2xl font-light text-rose leading-relaxed">
-          Minggu ini, ada gak satu momen yang bikin kamu ngerasa hidup?
-        </h2>
-        <textarea
-          id="reflection-input"
+      <div className="max-w-md w-full">
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+        >
+          <h2 className="text-2xl font-light text-offwhite leading-tight mb-8">
+            Sebelum lo pergi...<br/>
+            Ada satu momen minggu ini yang bikin lo ngerasa <span className="text-rose">hidup</span>?
+          </h2>
+        </motion.div>
+
+        <motion.textarea
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          readOnly={isSubmitting}
-          placeholder="Tulis aja, gue dengerin."
-          className={`w-full bg-rose/[0.02] border-b border-rose/10 py-6 px-4 focus:outline-none focus:border-rose/40 focus:bg-rose/[0.05] text-lg text-offwhite placeholder:text-offwhite/10 resize-none transition-all duration-700 rounded-t-xl ${isSubmitting ? 'opacity-50' : ''}`}
-          rows={3}
+          disabled={isSubmitted}
+          placeholder="Boleh satu kalimat, boleh panjang..."
+          className="w-full h-40 bg-transparent border border-rose/20 rounded-2xl p-5 text-offwhite placeholder:text-offwhite/30 focus:outline-none focus:border-rose/40 resize-none transition-all"
         />
-        
-        <div className="h-32 flex flex-col items-center justify-center space-y-6">
-          <AnimatePresence mode="wait">
-            {!isSubmitting ? (
-              <div key="actions" className="flex flex-col items-center gap-6">
-                <motion.button
-                  id="btn-reflection-done"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSubmit}
-                  disabled={!answer.trim()}
-                  className="px-12 py-3 rounded-full bg-rose text-[#12100f] font-medium text-sm shadow-xl shadow-rose/10 hover:shadow-rose/20 transition-all disabled:opacity-30"
-                >
-                  Kirim ke Hadir
-                </motion.button>
 
-                {onCancel && (
-                  <motion.button
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 0.4 }}
-                    whileHover={{ opacity: 1 }}
-                    onClick={onCancel}
-                    className="text-[10px] tracking-[0.3em] uppercase text-rose/80 font-medium"
-                  >
-                    Belum, lanjut ngobrol aja
-                  </motion.button>
-                )}
-              </div>
-            ) : (
-              <motion.p
-                key="response-text"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-rose text-lg font-light italic"
-              >
-                {responseText}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="flex gap-3 mt-8"
+        >
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              disabled={isSubmitted}
+              className="flex-1 py-3.5 text-rose/60 border border-rose/20 rounded-2xl active:scale-95 transition-all"
+            >
+              Lewati
+            </button>
+          )}
+          <button
+            onClick={handleSubmit}
+            disabled={!answer.trim() || isSubmitted}
+            className="flex-1 py-3.5 bg-rose text-[#12100f] rounded-2xl font-medium disabled:opacity-40 active:scale-95 transition-all"
+          >
+            {isSubmitted ? 'Menyimpan...' : 'Simpan & Tutup Hari Ini'}
+          </button>
+        </motion.div>
       </div>
     </motion.div>
   );
